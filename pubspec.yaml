@@ -1,0 +1,60 @@
+name: mywellwallet
+description: MyWellWallet - A Flutter app for managing health records via FHIR MCP Server
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # HTTP
+  http: ^1.1.0
+  
+  # UI Components
+  cupertino_icons: ^1.0.6
+  flutter_svg: ^2.0.9
+  cached_network_image: ^3.3.0
+  
+  # Navigation
+  go_router: ^12.1.1
+  
+  # Local Storage
+  shared_preferences: ^2.2.2
+  
+  # JSON
+  json_annotation: ^4.9.0
+  
+  # Date/Time
+  intl: ^0.18.1
+  
+  # Icons
+  font_awesome_flutter: ^10.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  build_runner: ^2.4.7
+  json_serializable: ^6.7.1
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
+
+# App Icon Configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/MyWellWallet.png"
+  adaptive_icon_background: "#4A90E2"
+  adaptive_icon_foreground: "assets/icons/MyWellWallet.png"
