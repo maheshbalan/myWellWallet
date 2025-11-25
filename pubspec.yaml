@@ -35,6 +35,18 @@ dependencies:
   
   # Icons
   font_awesome_flutter: ^10.6.0
+  
+  # Authentication
+  local_auth: ^2.3.0
+  crypto: ^3.0.3
+  
+  # Speech to Text
+  speech_to_text: ^7.0.0
+  permission_handler: ^11.3.0
+  
+  # Local LLM (for Gemma 2B integration)
+  # Note: Using a service-based approach that can integrate with native LLM libraries
+  path_provider: ^2.1.1
 
 dev_dependencies:
   flutter_test:

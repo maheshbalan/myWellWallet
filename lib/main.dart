@@ -3,7 +3,10 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'services/mcp_client.dart';
 import 'providers/patient_provider.dart';
+import 'providers/auth_provider.dart';
+import 'providers/query_provider.dart';
 import 'screens/home_screen.dart';
+import 'screens/registration_screen.dart';
 import 'screens/patient_list_screen.dart';
 import 'screens/patient_detail_screen.dart';
 
@@ -27,7 +30,13 @@ class MyWellWalletApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
+          create: (_) => AuthProvider(),
+        ),
+        ChangeNotifierProvider(
           create: (_) => PatientProvider(mcpClient: mcpClient),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => QueryProvider(mcpClient: mcpClient),
         ),
       ],
       child: MaterialApp.router(
@@ -176,6 +185,10 @@ class MyWellWalletApp extends StatelessWidget {
 final GoRouter _router = GoRouter(
   initialLocation: '/',
   routes: [
+    GoRoute(
+      path: '/register',
+      builder: (context, state) => const RegistrationScreen(),
+    ),
     GoRoute(
       path: '/',
       builder: (context, state) => const HomeScreen(),
