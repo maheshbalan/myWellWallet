@@ -78,6 +78,7 @@ class MCPClient {
         }
 
         // Send initialized notification with session ID
+        // Notifications don't have 'id' field in JSON-RPC 2.0
         if (_sessionId != null) {
           final initNotifyHeaders = <String, String>{
             'Content-Type': 'application/json',
@@ -90,14 +91,16 @@ class MCPClient {
             headers: initNotifyHeaders,
             body: jsonEncode({
               'jsonrpc': '2.0',
-              'id': _generateId(),
               'method': 'notifications/initialized',
               'params': {'sessionId': _sessionId},
             }),
           );
-          debugPrint('Initialized notification sent with session ID');
+          debugPrint('Initialized notification sent with session ID: $_sessionId');
         } else {
           debugPrint('Warning: Session ID not found in init response');
+          // Try to reinitialize
+          _initialized = false;
+          throw Exception('Session ID not received from server');
         }
 
         _initialized = true;
@@ -147,25 +150,24 @@ class MCPClient {
     _pendingRequests[requestId] = completer;
 
     try {
-      // Build headers with session ID if available
+      // Build headers with session ID - REQUIRED for all requests after initialize
       final headers = <String, String>{
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
       };
       
-      // Use Mcp-Session-Id header as per MCP specification
-      if (_sessionId != null) {
-        headers['Mcp-Session-Id'] = _sessionId!;
-        debugPrint('Sending request with session ID: $_sessionId');
-      } else {
-        debugPrint('Warning: Sending request without session ID');
+      // Session ID is REQUIRED in header for all requests after initialization
+      if (_sessionId == null) {
+        throw Exception('Session ID is required but not available. Please reinitialize.');
       }
+      
+      // Add session ID to header - this is the primary method per MCP spec
+      headers['Mcp-Session-Id'] = _sessionId!;
+      debugPrint('Sending $method request with session ID in header: $_sessionId');
 
-      // Build request body with session ID in params if needed
+      // Build request body - don't add sessionId to params/arguments
+      // The server should read it from the header
       final requestParams = Map<String, dynamic>.from(params);
-      if (_sessionId != null && method != 'initialize' && method != 'notifications/initialized') {
-        requestParams['sessionId'] = _sessionId;
-      }
 
       final response = await http.post(
         Uri.parse('$baseUrl/mcp'),

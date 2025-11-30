@@ -148,11 +148,64 @@ class GemmaService {
   }
 
   String _generateSimpleResponse(String query, Map<String, dynamic> fhirData) {
-    // Simple response generation - in production, Gemma 2B would do this
-    if (fhirData.containsKey('entry') || fhirData.containsKey('resourceType')) {
-      return 'I found the information you requested. Here are the details from your health records.';
+    // Parse FHIR data and generate conversational response
+    final lowerQuery = query.toLowerCase();
+    
+    // Try to extract actual data from the result
+    var data = fhirData;
+    if (data.containsKey('result')) {
+      data = data['result'] as Map<String, dynamic>;
     }
-    return 'I\'ve retrieved your health information. How can I help you further?';
+    
+    // Check for content array (MCP response format)
+    if (data.containsKey('content') && data['content'] is List) {
+      final content = data['content'] as List;
+      if (content.isNotEmpty && content[0] is Map) {
+        final firstContent = content[0] as Map<String, dynamic>;
+        if (firstContent.containsKey('text')) {
+          try {
+            final textData = jsonDecode(firstContent['text'] as String);
+            data = textData as Map<String, dynamic>;
+          } catch (e) {
+            // Not JSON, use as is
+          }
+        }
+      }
+    }
+    
+    // Parse based on query intent
+    if (lowerQuery.contains('medication') || lowerQuery.contains('drug')) {
+      if (data.containsKey('response') && data['response'] is Map) {
+        final response = data['response'] as Map;
+        if (response.containsKey('entry') && (response['entry'] as List).isNotEmpty) {
+          final count = (response['entry'] as List).length;
+          return 'I found $count medication${count > 1 ? 's' : ''} in your records. Would you like to see the details?';
+        }
+      }
+      return 'I couldn\'t find any medications in your records at this time.';
+    } else if (lowerQuery.contains('test') || lowerQuery.contains('lab')) {
+      if (data.containsKey('response') && data['response'] is Map) {
+        final response = data['response'] as Map;
+        if (response.containsKey('entry') && (response['entry'] as List).isNotEmpty) {
+          final count = (response['entry'] as List).length;
+          return 'I found $count test result${count > 1 ? 's' : ''} in your records. Here\'s what I found.';
+        }
+      }
+      return 'I couldn\'t find any test results in your records at this time.';
+    } else if (lowerQuery.contains('timeline') || lowerQuery.contains('recent') || lowerQuery.contains('history')) {
+      if (data.containsKey('response') && data['response'] is Map) {
+        final response = data['response'] as Map;
+        if (response.containsKey('entry') && (response['entry'] as List).isNotEmpty) {
+          final count = (response['entry'] as List).length;
+          return 'I found $count recent event${count > 1 ? 's' : ''} in your health timeline. Here\'s your recent activity.';
+        }
+      }
+      return 'I couldn\'t find any recent events in your timeline at this time.';
+    } else if (data.containsKey('response') || data.containsKey('entry') || data.containsKey('resourceType')) {
+      return 'I found the information you requested in your health records. Here are the details.';
+    }
+    
+    return 'I\'ve processed your request. How can I help you further?';
   }
 
   bool _matches(String query, List<String> keywords) {
