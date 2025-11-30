@@ -73,7 +73,50 @@ class PatientProvider with ChangeNotifier {
           final searchName = name.toLowerCase();
           return patientName.contains(searchName) || searchName.contains(patientName);
         },
-        orElse: () => allPatients.isNotEmpty ? allPatients.first : throw Exception('No patients found'),
+        orElse: () => throw Exception('No matching patient found'),
+      );
+      
+      _foundPatient = matchingPatient;
+      _error = null;
+    } catch (e) {
+      _error = 'Patient not found: $e';
+      _foundPatient = null;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Search patient by name and date of birth
+  Future<void> searchPatientByNameAndDOB(String name, DateTime dateOfBirth) async {
+    _isLoading = true;
+    _error = null;
+    _foundPatient = null;
+    notifyListeners();
+
+    try {
+      // Get all patients and search by name and DOB
+      final allPatients = await mcpClient.getPatients();
+      
+      // Try to find patient by name and DOB match
+      final dobString = dateOfBirth.toIso8601String().split('T')[0]; // YYYY-MM-DD format
+      
+      final matchingPatient = allPatients.firstWhere(
+        (patient) {
+          final patientName = patient.displayName.toLowerCase();
+          final searchName = name.toLowerCase();
+          final nameMatches = patientName.contains(searchName) || searchName.contains(patientName);
+          
+          // Check DOB if available
+          bool dobMatches = true;
+          if (patient.birthDate != null) {
+            final patientDob = patient.birthDate!.split('T')[0];
+            dobMatches = patientDob == dobString;
+          }
+          
+          return nameMatches && dobMatches;
+        },
+        orElse: () => throw Exception('No matching patient found with name and DOB'),
       );
       
       _foundPatient = matchingPatient;

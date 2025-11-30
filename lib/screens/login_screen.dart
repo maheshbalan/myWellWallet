@@ -149,6 +149,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: Theme.of(context).textTheme.titleLarge,
                   textAlign: TextAlign.center,
                 ),
+                const SizedBox(height: 16),
+                Text(
+                  'Please authenticate to continue',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF7F8C8D),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ],
               const SizedBox(height: 48),
               

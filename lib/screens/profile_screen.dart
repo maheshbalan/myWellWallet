@@ -50,8 +50,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       final patientProvider = context.read<PatientProvider>();
-      // Search for patient by name
-      await patientProvider.searchPatientByName(user.name);
+      // Search for patient by name and DOB if available
+      if (user.dateOfBirth != null) {
+        await patientProvider.searchPatientByNameAndDOB(user.name, user.dateOfBirth!);
+      } else {
+        await patientProvider.searchPatientByName(user.name);
+      }
       final patient = patientProvider.foundPatient;
       
       setState(() {

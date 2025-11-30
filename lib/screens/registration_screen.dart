@@ -16,6 +16,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  DateTime? _dateOfBirth;
   bool _isLoading = false;
 
   @override
@@ -34,11 +35,22 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       _isLoading = true;
     });
 
+    if (_dateOfBirth == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your date of birth')),
+      );
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+
     try {
       final authProvider = context.read<AuthProvider>();
       final success = await authProvider.register(
         _nameController.text.trim(),
         _emailController.text.trim(),
+        _dateOfBirth!,
       );
 
       if (success && mounted) {
@@ -148,6 +160,44 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     }
                     return null;
                   },
+                ),
+                const SizedBox(height: 24),
+                
+                // Date of Birth Field
+                InkWell(
+                  onTap: () async {
+                    final pickedDate = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now().subtract(const Duration(days: 365 * 30)),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime.now(),
+                    );
+                    if (pickedDate != null) {
+                      setState(() {
+                        _dateOfBirth = pickedDate;
+                      });
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Date of Birth',
+                      hintText: _dateOfBirth == null 
+                          ? 'Select your date of birth'
+                          : '${_dateOfBirth!.year}-${_dateOfBirth!.month.toString().padLeft(2, '0')}-${_dateOfBirth!.day.toString().padLeft(2, '0')}',
+                      prefixIcon: const Icon(FontAwesomeIcons.calendar),
+                      suffixIcon: const Icon(Icons.arrow_drop_down),
+                    ),
+                    child: Text(
+                      _dateOfBirth == null
+                          ? 'Select your date of birth'
+                          : '${_dateOfBirth!.year}-${_dateOfBirth!.month.toString().padLeft(2, '0')}-${_dateOfBirth!.day.toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        color: _dateOfBirth == null 
+                            ? Colors.grey[600] 
+                            : Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 24),
                 

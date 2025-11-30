@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/patient.dart';
 
@@ -41,26 +42,38 @@ class MCPClient {
         final lines = initResponse.body.split('\n');
         for (final line in lines) {
           if (line.startsWith('data: ')) {
-            final data = jsonDecode(line.substring(6));
-            if (data['id'] != null) {
-              _sessionId = data['result']?['sessionId'];
-              break;
+            try {
+              final data = jsonDecode(line.substring(6));
+              if (data['id'] != null && data['result'] != null) {
+                _sessionId = data['result']['sessionId'] as String?;
+                if (_sessionId != null) {
+                  debugPrint('MCP Session initialized with ID: $_sessionId');
+                }
+                break;
+              }
+            } catch (e) {
+              debugPrint('Error parsing init response: $e');
             }
           }
         }
 
-        // Send initialized notification
-        await http.post(
-          Uri.parse('$baseUrl/mcp'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json, text/event-stream',
-          },
-          body: jsonEncode({
-            'jsonrpc': '2.0',
-            'method': 'notifications/initialized'
-          }),
-        );
+        // Send initialized notification with session ID
+        if (_sessionId != null) {
+          await http.post(
+            Uri.parse('$baseUrl/mcp'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json, text/event-stream',
+              'X-Session-ID': _sessionId!,
+            },
+            body: jsonEncode({
+              'jsonrpc': '2.0',
+              'id': _generateId(),
+              'method': 'notifications/initialized',
+              'params': {'sessionId': _sessionId},
+            }),
+          );
+        }
 
         _initialized = true;
       } else {
@@ -98,22 +111,40 @@ class MCPClient {
       await initialize();
     }
 
+    // Ensure we have a session ID
+    if (_sessionId == null) {
+      await initialize();
+    }
+
     final requestId = _generateId();
     final completer = Completer<Map<String, dynamic>>();
     _pendingRequests[requestId] = completer;
 
     try {
+      // Build headers with session ID if available
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+      };
+      
+      if (_sessionId != null) {
+        headers['X-Session-ID'] = _sessionId!;
+      }
+
+      // Build request body with session ID in params if needed
+      final requestParams = Map<String, dynamic>.from(params);
+      if (_sessionId != null && method != 'initialize') {
+        requestParams['sessionId'] = _sessionId;
+      }
+
       final response = await http.post(
         Uri.parse('$baseUrl/mcp'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/event-stream',
-        },
+        headers: headers,
         body: jsonEncode({
           'jsonrpc': '2.0',
           'id': requestId,
           'method': method,
-          'params': params,
+          'params': requestParams,
         }),
       );
 

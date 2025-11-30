@@ -76,7 +76,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   /// Register a new user
-  Future<bool> register(String name, String email) async {
+  Future<bool> register(String name, String email, DateTime dateOfBirth) async {
     _isLoading = true;
     notifyListeners();
 
@@ -86,6 +86,7 @@ class AuthProvider with ChangeNotifier {
         id: _generateUserId(),
         name: name,
         email: email,
+        dateOfBirth: dateOfBirth,
         createdAt: DateTime.now(),
       );
 

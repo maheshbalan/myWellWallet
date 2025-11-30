@@ -33,8 +33,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _establishPatientContext() async {
     final authProvider = context.read<AuthProvider>();
     final user = authProvider.currentUser;
-    if (user != null) {
-      // Establish patient context from profile name
+    if (user != null && user.dateOfBirth != null) {
+      // Establish patient context from profile name and DOB
+      final patientProvider = context.read<PatientProvider>();
+      try {
+        await patientProvider.searchPatientByNameAndDOB(user.name, user.dateOfBirth!);
+      } catch (e) {
+        debugPrint('Could not establish patient context: $e');
+        // Try with just name as fallback
+        try {
+          await patientProvider.searchPatientByName(user.name);
+        } catch (e2) {
+          debugPrint('Could not establish patient context with name only: $e2');
+        }
+      }
+    } else if (user != null) {
+      // Fallback to name only if DOB not available
       final patientProvider = context.read<PatientProvider>();
       try {
         await patientProvider.searchPatientByName(user.name);

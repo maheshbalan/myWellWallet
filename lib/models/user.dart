@@ -7,12 +7,14 @@ class User {
   final String id;
   final String name;
   final String email;
+  final DateTime? dateOfBirth;
   final DateTime createdAt;
 
   User({
     required this.id,
     required this.name,
     required this.email,
+    this.dateOfBirth,
     required this.createdAt,
   });
 
@@ -23,12 +25,14 @@ class User {
     String? id,
     String? name,
     String? email,
+    DateTime? dateOfBirth,
     DateTime? createdAt,
   }) {
     return User(
       id: id ?? this.id,
       name: name ?? this.name,
       email: email ?? this.email,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
       createdAt: createdAt ?? this.createdAt,
     );
   }
