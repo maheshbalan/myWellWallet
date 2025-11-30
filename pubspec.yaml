@@ -15,6 +15,7 @@ dependencies:
   
   # HTTP
   http: ^1.1.0
+  sse: ^4.1.0  # Server-Sent Events for persistent SSE connection
   
   # UI Components
   cupertino_icons: ^1.0.6

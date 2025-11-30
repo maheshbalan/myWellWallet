@@ -107,16 +107,21 @@ class MCPClient {
             'Mcp-Session-Id': _sessionId!,
           };
           
-          await http.post(
-            Uri.parse('$baseUrl/mcp'),
-            headers: initNotifyHeaders,
-            body: jsonEncode({
-              'jsonrpc': '2.0',
-              'method': 'notifications/initialized',
-              'params': {'sessionId': _sessionId},
-            }),
-          );
-          debugPrint('Initialized notification sent with session ID: $_sessionId');
+          try {
+            final notifyResponse = await http.post(
+              Uri.parse('$baseUrl/mcp'),
+              headers: initNotifyHeaders,
+              body: jsonEncode({
+                'jsonrpc': '2.0',
+                'method': 'notifications/initialized',
+              }),
+            );
+            debugPrint('Initialized notification sent. Status: ${notifyResponse.statusCode}');
+            debugPrint('Initialized notification response: ${notifyResponse.body}');
+          } catch (e) {
+            debugPrint('Warning: Failed to send initialized notification: $e');
+            // Continue anyway - some servers may not require this
+          }
         } else {
           debugPrint('Warning: Session ID not found in init response');
           // Try to reinitialize
@@ -125,6 +130,7 @@ class MCPClient {
         }
 
         _initialized = true;
+        debugPrint('MCP Client initialized successfully with session: $_sessionId');
       } else {
         debugPrint('Init failed with status: ${initResponse.statusCode}, body: ${initResponse.body}');
         throw Exception('Failed to initialize: ${initResponse.statusCode}');
@@ -145,10 +151,19 @@ class MCPClient {
     String toolName,
     Map<String, dynamic> arguments,
   ) async {
+    debugPrint('Calling tool: $toolName with arguments: $arguments');
+    
+    // Ensure we're initialized
+    if (!_initialized || _sessionId == null) {
+      await initialize();
+    }
+    
     final result = await _sendRequest('tools/call', {
       'name': toolName,
       'arguments': arguments,
     });
+    
+    debugPrint('Tool call result: $result');
     return result;
   }
 
