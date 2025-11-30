@@ -118,6 +118,9 @@ class MCPClient {
             );
             debugPrint('Initialized notification sent. Status: ${notifyResponse.statusCode}');
             debugPrint('Initialized notification response: ${notifyResponse.body}');
+            
+            // Small delay to ensure server processes initialized notification
+            await Future.delayed(const Duration(milliseconds: 500));
           } catch (e) {
             debugPrint('Warning: Failed to send initialized notification: $e');
             // Continue anyway - some servers may not require this
