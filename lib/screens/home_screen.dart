@@ -335,26 +335,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       body: Column(
         children: [
-          // Welcome Message (only shown when no conversation)
-          if (_messages.length <= 1)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-              child: ConversationMessage(
-                isUser: false,
-                message: _messages.isNotEmpty
-                    ? _messages[0]['message'] as String
-                    : 'Hello! I\'m your MyWellWallet assistant. How can I help you with your health records today?',
-                timestamp: DateTime.now(),
-              ),
-            ),
-
           // Conversation Area (scrollable, like ChatGPT/Claude)
           Expanded(
             child: _messages.length <= 1
-                ? const SizedBox.shrink()
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                    child: ConversationMessage(
+                      isUser: false,
+                      message: _messages.isNotEmpty
+                          ? _messages[0]['message'] as String
+                          : 'Hello! I\'m your MyWellWallet assistant. How can I help you with your health records today?',
+                      timestamp: DateTime.now(),
+                    ),
+                  )
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
                       final message = _messages[index];
@@ -371,185 +367,181 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
 
           // Bottom Section: Prompts + Search Bar (always visible, no gap)
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Follow-up Prompts (stacked vertically, max 3)
-              if (_followUpPrompts.isNotEmpty)
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 150),
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _followUpPrompts.length > 3
-                        ? 3
-                        : _followUpPrompts.length,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Card(
-                          child: InkWell(
-                            onTap: () =>
-                                _handleFollowUpPrompt(_followUpPrompts[index]),
-                            borderRadius: BorderRadius.circular(12),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12.0),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    FontAwesomeIcons.lightbulb,
-                                    size: 16,
-                                    color: colorScheme.primary,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      _followUpPrompts[index],
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium,
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Follow-up Prompts (stacked vertically, max 3)
+                if (_followUpPrompts.isNotEmpty)
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 150),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _followUpPrompts.length > 3
+                          ? 3
+                          : _followUpPrompts.length,
+                      itemBuilder: (context, index) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Card(
+                            child: InkWell(
+                              onTap: () =>
+                                  _handleFollowUpPrompt(_followUpPrompts[index]),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      FontAwesomeIcons.lightbulb,
+                                      size: 16,
+                                      color: colorScheme.primary,
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-              // Search Bar (immediately below prompts, no gap)
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border(top: BorderSide(color: Colors.grey.shade200)),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Recording Indicator
-                    if (_isListening)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 8,
-                          horizontal: 16,
-                        ),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.red, width: 2),
-                        ),
-                        child: Row(
-                          children: [
-                            AnimatedBuilder(
-                              animation: _micAnimation,
-                              builder: (context, child) {
-                                return Transform.scale(
-                                  scale: _micAnimation.value,
-                                  child: Icon(
-                                    FontAwesomeIcons.microphone,
-                                    color: Colors.red,
-                                    size: 20,
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Recording... Tap to stop',
-                                style: TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.w600,
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        _followUpPrompts[index],
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(
-                                FontAwesomeIcons.circleStop,
-                                color: Colors.red,
-                              ),
-                              onPressed: _stopListening,
-                              tooltip: 'Stop Recording',
-                            ),
-                          ],
-                        ),
-                      ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
 
-                    // Input Field
-                    Row(
+                // Recording Indicator
+                if (_isListening)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 16,
+                    ),
+                    margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red, width: 2),
+                    ),
+                    child: Row(
                       children: [
+                        AnimatedBuilder(
+                          animation: _micAnimation,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _micAnimation.value,
+                              child: Icon(
+                                FontAwesomeIcons.microphone,
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 12),
                         Expanded(
-                          child: TextField(
-                            controller: _queryController,
-                            decoration: InputDecoration(
-                              hintText: _isListening
-                                  ? 'Listening...'
-                                  : 'Type your question or tap the mic...',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 12,
-                              ),
-                              suffixIcon: _isListening
-                                  ? IconButton(
-                                      icon: const Icon(
-                                        FontAwesomeIcons.circleStop,
-                                        color: Colors.red,
-                                      ),
-                                      onPressed: _stopListening,
-                                      tooltip: 'Stop Recording',
-                                    )
-                                  : IconButton(
-                                      icon: Icon(
-                                        FontAwesomeIcons.microphone,
-                                        color: _speechAvailable
-                                            ? colorScheme.primary
-                                            : Colors.grey,
-                                      ),
-                                      onPressed: _speechAvailable
-                                          ? _startListening
-                                          : null,
-                                      tooltip: 'Start Voice Input',
-                                    ),
+                          child: Text(
+                            'Recording... Tap to stop',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.w600,
                             ),
-                            maxLines: null,
-                            textCapitalization: TextCapitalization.sentences,
-                            onSubmitted: (_) => _processQuery(),
-                            enabled: !_isListening,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        // Send Button
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary,
-                            shape: BoxShape.circle,
+                        IconButton(
+                          icon: const Icon(
+                            FontAwesomeIcons.circleStop,
+                            color: Colors.red,
                           ),
-                          child: IconButton(
-                            icon: const Icon(
-                              FontAwesomeIcons.paperPlane,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                            onPressed: _processQuery,
-                            tooltip: 'Send',
-                          ),
+                          onPressed: _stopListening,
+                          tooltip: 'Stop Recording',
                         ),
                       ],
                     ),
-                  ],
+                  ),
+
+                // Search Bar (immediately below prompts, no gap)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _queryController,
+                          decoration: InputDecoration(
+                            hintText: _isListening
+                                ? 'Listening...'
+                                : 'Type your question or tap the mic...',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            suffixIcon: _isListening
+                                ? IconButton(
+                                    icon: const Icon(
+                                      FontAwesomeIcons.circleStop,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: _stopListening,
+                                    tooltip: 'Stop Recording',
+                                  )
+                                : IconButton(
+                                    icon: Icon(
+                                      FontAwesomeIcons.microphone,
+                                      color: _speechAvailable
+                                          ? colorScheme.primary
+                                          : Colors.grey,
+                                    ),
+                                    onPressed: _speechAvailable
+                                        ? _startListening
+                                        : null,
+                                    tooltip: 'Start Voice Input',
+                                  ),
+                          ),
+                          maxLines: null,
+                          textCapitalization: TextCapitalization.sentences,
+                          onSubmitted: (_) => _processQuery(),
+                          enabled: !_isListening,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Send Button
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(
+                            FontAwesomeIcons.paperPlane,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          onPressed: _processQuery,
+                          tooltip: 'Send',
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

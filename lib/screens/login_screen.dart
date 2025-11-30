@@ -100,15 +100,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   @override
-  void initState() {
-    super.initState();
-    // Try biometric auth automatically
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _tryBiometricAuth();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final authProvider = context.watch<AuthProvider>();
@@ -134,12 +125,22 @@ class _LoginScreenState extends State<LoginScreen> {
                   color: colorScheme.primary,
                 ),
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: 32),
+              
+              // App Title
+              Text(
+                'MyWellWallet',
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
               
               // Welcome Text
               Text(
                 'Welcome Back',
-                style: Theme.of(context).textTheme.displayMedium,
+                style: Theme.of(context).textTheme.headlineMedium,
                 textAlign: TextAlign.center,
               ),
               if (authProvider.currentUser != null) ...[
@@ -147,14 +148,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   authProvider.currentUser!.name,
                   style: Theme.of(context).textTheme.titleLarge,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Please authenticate to continue',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF7F8C8D),
-                  ),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -181,26 +174,46 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 24),
                 ElevatedButton(
                   onPressed: _authenticateWithPin,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    minimumSize: const Size(double.infinity, 50),
+                  ),
                   child: const Text('Login with PIN'),
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _showPinInput = false;
+                    });
+                  },
+                  child: const Text('Use Biometric instead'),
                 ),
               ] else ...[
                 // Biometric Button
                 ElevatedButton.icon(
                   onPressed: _tryBiometricAuth,
                   icon: const Icon(FontAwesomeIcons.fingerprint),
-                  label: const Text('Authenticate with Biometric'),
+                  label: const Text('Login with Biometric'),
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 32),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    minimumSize: const Size(double.infinity, 50),
                   ),
                 ),
                 const SizedBox(height: 16),
-                TextButton(
+                // PIN Button
+                ElevatedButton.icon(
                   onPressed: () {
                     setState(() {
                       _showPinInput = true;
                     });
                   },
-                  child: const Text('Use PIN instead'),
+                  icon: const Icon(FontAwesomeIcons.lock),
+                  label: const Text('Login with PIN'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    minimumSize: const Size(double.infinity, 50),
+                  ),
                 ),
               ],
               

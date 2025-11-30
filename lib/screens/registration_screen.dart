@@ -16,13 +16,17 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _pinController = TextEditingController();
   DateTime? _dateOfBirth;
   bool _isLoading = false;
+  bool _showAuthChoice = false;
+  String? _authMethod; // 'biometric' or 'pin'
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
+    _pinController.dispose();
     super.dispose();
   }
 
@@ -31,45 +35,103 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
-
     if (_dateOfBirth == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select your date of birth')),
       );
+      return;
+    }
+
+    // Show authentication method choice
+    if (!_showAuthChoice) {
       setState(() {
-        _isLoading = false;
+        _showAuthChoice = true;
       });
       return;
     }
 
+    // If auth method not selected, return
+    if (_authMethod == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please choose an authentication method')),
+      );
+      return;
+    }
+
+    // If PIN method selected, validate PIN
+    if (_authMethod == 'pin') {
+      if (_pinController.text.trim().isEmpty || _pinController.text.trim().length < 4) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PIN must be at least 4 digits')),
+        );
+        return;
+      }
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
       final authProvider = context.read<AuthProvider>();
+      
+      // Register user
       final success = await authProvider.register(
         _nameController.text.trim(),
         _emailController.text.trim(),
         _dateOfBirth!,
       );
 
-      if (success && mounted) {
-        if (mounted) {
+      if (!success) {
+        throw Exception('Registration failed');
+      }
+
+      // Set up authentication method
+      if (_authMethod == 'pin') {
+        await authProvider.setPin(_pinController.text.trim());
+        await authProvider.setAuthenticated(true);
+      } else if (_authMethod == 'biometric') {
+        // Try to set up biometric
+        try {
+          final biometricSuccess = await authProvider.authenticate();
+          if (biometricSuccess) {
+            await authProvider.setAuthenticated(true);
+          } else {
+            // Biometric setup failed, fall back to PIN
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Biometric setup failed. Please set up a PIN instead.'),
+              ),
+            );
+            setState(() {
+              _authMethod = 'pin';
+              _isLoading = false;
+            });
+            return;
+          }
+        } catch (e) {
+          // Biometric not available, fall back to PIN
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Account created successfully! Please login with biometric or PIN.'),
-              backgroundColor: Colors.green,
+              content: Text('Biometric not available. Please set up a PIN instead.'),
             ),
           );
+          setState(() {
+            _authMethod = 'pin';
+            _isLoading = false;
+          });
+          return;
         }
-        // Redirect to login after registration - user will authenticate with biometric/PIN
-        context.go('/login');
-      } else if (mounted) {
+      }
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Registration completed. You can authenticate later.'),
+            content: Text('Account created successfully!'),
+            backgroundColor: Colors.green,
           ),
         );
+        // Redirect to home
         context.go('/');
       }
     } catch (e) {
@@ -227,49 +289,125 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ),
                 const SizedBox(height: 40),
                 
-                // Register Button
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _handleRegistration,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 18),
+                // Register Button or Auth Method Choice
+                if (!_showAuthChoice) ...[
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _handleRegistration,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                    ),
+                    child: const Text('Continue'),
                   ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text('Create Account'),
-                ),
-                const SizedBox(height: 24),
-                
-                // Info Card
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Row(
-                      children: [
-                        Icon(
-                          FontAwesomeIcons.fingerprint,
-                          color: colorScheme.primary,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            'You will be asked to register your biometric (fingerprint or face) for secure access.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              height: 1.5,
-                            ),
-                          ),
-                        ),
-                      ],
+                ] else ...[
+                  // Authentication Method Selection
+                  Text(
+                    'Choose Authentication Method',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Biometric Button
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _authMethod = 'biometric';
+                      });
+                    },
+                    icon: Icon(
+                      FontAwesomeIcons.fingerprint,
+                      color: _authMethod == 'biometric' 
+                          ? Colors.white 
+                          : colorScheme.primary,
+                    ),
+                    label: const Text('Use Biometric'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      backgroundColor: _authMethod == 'biometric' 
+                          ? colorScheme.primary 
+                          : null,
+                      foregroundColor: _authMethod == 'biometric' 
+                          ? Colors.white 
+                          : null,
                     ),
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  
+                  // PIN Button
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _authMethod = 'pin';
+                      });
+                    },
+                    icon: Icon(
+                      FontAwesomeIcons.lock,
+                      color: _authMethod == 'pin' 
+                          ? Colors.white 
+                          : colorScheme.primary,
+                    ),
+                    label: const Text('Use PIN'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      backgroundColor: _authMethod == 'pin' 
+                          ? colorScheme.primary 
+                          : null,
+                      foregroundColor: _authMethod == 'pin' 
+                          ? Colors.white 
+                          : null,
+                    ),
+                  ),
+                  
+                  // PIN Input (if PIN method selected)
+                  if (_authMethod == 'pin') ...[
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: _pinController,
+                      decoration: const InputDecoration(
+                        labelText: 'Enter PIN',
+                        hintText: '4+ digits',
+                        prefixIcon: Icon(FontAwesomeIcons.lock),
+                      ),
+                      keyboardType: TextInputType.number,
+                      obscureText: true,
+                      maxLength: 10,
+                    ),
+                  ],
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Complete Registration Button
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _handleRegistration,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Text('Create Account'),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Back button
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _showAuthChoice = false;
+                        _authMethod = null;
+                      });
+                    },
+                    child: const Text('Back'),
+                  ),
+                ],
               ],
             ),
           ),

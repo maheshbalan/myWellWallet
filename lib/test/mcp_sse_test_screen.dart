@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../services/mcp_client_sse.dart';
 import '../models/patient.dart';
 
@@ -174,6 +175,8 @@ class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
 
   @override
   void dispose() {
+    // Cancel any ongoing operations before disposing
+    _isLoading = false;
     _client.dispose();
     super.dispose();
   }
@@ -186,7 +189,13 @@ class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
         backgroundColor: Colors.blue,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
         ),
       ),
       body: Column(
