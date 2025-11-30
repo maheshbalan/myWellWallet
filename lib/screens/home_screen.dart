@@ -322,176 +322,45 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       body: Column(
         children: [
-          // Welcome Message and Search Bar Section (shown when no conversation)
+          // Welcome Message (only shown when no conversation)
           if (_messages.length <= 1)
             Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Welcome Message
-                  if (_messages.isNotEmpty && _messages[0]['message'] != 'typing')
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 24.0),
-                      child: ConversationMessage(
-                        isUser: false,
-                        message: _messages[0]['message'] as String,
-                        timestamp: _messages[0]['timestamp'] as DateTime,
-                      ),
-                    ),
-                  
-                  // Search Bar
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          TextField(
-                            controller: _queryController,
-                            decoration: InputDecoration(
-                              hintText: _isListening 
-                                  ? 'Listening...' 
-                                  : 'Type your question or tap the mic...',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 12,
-                              ),
-                              suffixIcon: _isListening
-                                  ? IconButton(
-                                      icon: const Icon(
-                                        FontAwesomeIcons.circleStop,
-                                        color: Colors.red,
-                                      ),
-                                      onPressed: _stopListening,
-                                      tooltip: 'Stop Recording',
-                                    )
-                                  : IconButton(
-                                      icon: Icon(
-                                        FontAwesomeIcons.microphone,
-                                        color: _speechAvailable
-                                            ? colorScheme.primary
-                                            : Colors.grey,
-                                      ),
-                                      onPressed: _speechAvailable ? _startListening : null,
-                                      tooltip: 'Start Voice Input',
-                                    ),
-                            ),
-                            maxLines: null,
-                            textCapitalization: TextCapitalization.sentences,
-                            onSubmitted: (_) => _processQuery(),
-                            enabled: !_isListening,
-                          ),
-                          if (_isListening) ...[
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.red, width: 2),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  AnimatedBuilder(
-                                    animation: _micAnimation,
-                                    builder: (context, child) {
-                                      return Transform.scale(
-                                        scale: _micAnimation.value,
-                                        child: Icon(
-                                          FontAwesomeIcons.microphone,
-                                          color: Colors.red,
-                                          size: 20,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    'Recording... Tap mic to stop',
-                                    style: TextStyle(
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+              child: ConversationMessage(
+                isUser: false,
+                message: _messages.isNotEmpty 
+                    ? _messages[0]['message'] as String
+                    : 'Hello! I\'m your MyWellWallet assistant. How can I help you with your health records today?',
+                timestamp: DateTime.now(),
+              ),
+            ),
+          
+          // Conversation Area (scrollable, like ChatGPT/Claude)
+          Expanded(
+            child: _messages.length <= 1
+                ? const SizedBox.shrink()
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final message = _messages[index];
+                      if (message['message'] == 'typing') {
+                        return const TypingIndicator();
+                      }
+                      return ConversationMessage(
+                        isUser: message['isUser'] as bool,
+                        message: message['message'] as String,
+                        timestamp: message['timestamp'] as DateTime,
+                      );
+                    },
                   ),
-                  
-                  // Follow-up Prompts (stacked vertically, max 3)
-                  if (_followUpPrompts.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    ...(_followUpPrompts.take(3).map((prompt) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Card(
-                        child: InkWell(
-                          onTap: () => _handleFollowUpPrompt(prompt),
-                          borderRadius: BorderRadius.circular(16),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  FontAwesomeIcons.lightbulb,
-                                  size: 20,
-                                  color: colorScheme.primary,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    prompt,
-                                    style: Theme.of(context).textTheme.bodyLarge,
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.arrow_forward_ios,
-                                  size: 16,
-                                  color: Colors.grey[400],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ))),
-                  ],
-                ],
-              ),
-            ),
+          ),
           
-          // Conversation Area (shown when there are messages beyond welcome)
-          if (_messages.length > 1)
-            Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _messages.length,
-                itemBuilder: (context, index) {
-                  final message = _messages[index];
-                  if (message['message'] == 'typing') {
-                    return const TypingIndicator();
-                  }
-                  return ConversationMessage(
-                    isUser: message['isUser'] as bool,
-                    message: message['message'] as String,
-                    timestamp: message['timestamp'] as DateTime,
-                  );
-                },
-              ),
-            ),
-          
-          // Follow-up Prompts (shown below conversation when active)
-          if (_messages.length > 1 && _followUpPrompts.isNotEmpty)
+          // Follow-up Prompts (stacked vertically, max 3, always visible when available)
+          if (_followUpPrompts.isNotEmpty)
             Container(
-              constraints: const BoxConstraints(maxHeight: 200),
+              constraints: const BoxConstraints(maxHeight: 180),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: ListView.builder(
                 shrinkWrap: true,
@@ -529,80 +398,129 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
           
-          // Input Area (shown when conversation is active)
-          if (_messages.length > 1)
-            Container(
-              padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  top: BorderSide(color: Colors.grey.shade200),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _queryController,
-                      decoration: InputDecoration(
-                        hintText: _isListening 
-                            ? 'Listening...' 
-                            : 'Type your question or tap the mic...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                        suffixIcon: _isListening
-                            ? IconButton(
-                                icon: const Icon(
-                                  FontAwesomeIcons.circleStop,
-                                  color: Colors.red,
-                                ),
-                                onPressed: _stopListening,
-                                tooltip: 'Stop Recording',
-                              )
-                            : IconButton(
-                                icon: Icon(
-                                  FontAwesomeIcons.microphone,
-                                  color: _speechAvailable
-                                      ? colorScheme.primary
-                                      : Colors.grey,
-                                ),
-                                onPressed: _speechAvailable ? _startListening : null,
-                                tooltip: 'Start Voice Input',
-                              ),
-                      ),
-                      maxLines: null,
-                      textCapitalization: TextCapitalization.sentences,
-                      onSubmitted: (_) => _processQuery(),
-                      enabled: !_isListening,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Send Button
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(
-                        FontAwesomeIcons.paperPlane,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      onPressed: _processQuery,
-                      tooltip: 'Send',
-                    ),
-                  ),
-                ],
+          // Search Bar (always accessible at bottom)
+          Container(
+            padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                top: BorderSide(color: Colors.grey.shade200),
               ),
             ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Recording Indicator
+                if (_isListening)
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red, width: 2),
+                    ),
+                    child: Row(
+                      children: [
+                        AnimatedBuilder(
+                          animation: _micAnimation,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _micAnimation.value,
+                              child: Icon(
+                                FontAwesomeIcons.microphone,
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Recording... Tap to stop',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(FontAwesomeIcons.circleStop, color: Colors.red),
+                          onPressed: _stopListening,
+                          tooltip: 'Stop Recording',
+                        ),
+                      ],
+                    ),
+                  ),
+                
+                // Input Field
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _queryController,
+                        decoration: InputDecoration(
+                          hintText: _isListening 
+                              ? 'Listening...' 
+                              : 'Type your question or tap the mic...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          suffixIcon: _isListening
+                              ? IconButton(
+                                  icon: const Icon(
+                                    FontAwesomeIcons.circleStop,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: _stopListening,
+                                  tooltip: 'Stop Recording',
+                                )
+                              : IconButton(
+                                  icon: Icon(
+                                    FontAwesomeIcons.microphone,
+                                    color: _speechAvailable
+                                        ? colorScheme.primary
+                                        : Colors.grey,
+                                  ),
+                                  onPressed: _speechAvailable ? _startListening : null,
+                                  tooltip: 'Start Voice Input',
+                                ),
+                        ),
+                        maxLines: null,
+                        textCapitalization: TextCapitalization.sentences,
+                        onSubmitted: (_) => _processQuery(),
+                        enabled: !_isListening,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Send Button
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: const Icon(
+                          FontAwesomeIcons.paperPlane,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        onPressed: _processQuery,
+                        tooltip: 'Send',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

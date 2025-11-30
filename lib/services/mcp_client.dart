@@ -41,37 +41,54 @@ class MCPClient {
         // Parse SSE response or JSON response
         String responseBody = initResponse.body;
         debugPrint('Init response body: $responseBody');
+        debugPrint('Init response headers: ${initResponse.headers}');
+        
+        // Check if session ID is in response headers
+        final sessionIdFromHeader = initResponse.headers['mcp-session-id'] ?? 
+                                   initResponse.headers['Mcp-Session-Id'] ??
+                                   initResponse.headers['x-session-id'];
+        if (sessionIdFromHeader != null) {
+          _sessionId = sessionIdFromHeader;
+          debugPrint('MCP Session ID from header: $_sessionId');
+        }
         
         // Try parsing as JSON first (non-SSE response)
-        try {
-          final jsonData = jsonDecode(responseBody);
-          if (jsonData['result'] != null) {
-            _sessionId = jsonData['result']['sessionId'] as String?;
-            if (_sessionId != null) {
-              debugPrint('MCP Session initialized with ID: $_sessionId');
+        if (_sessionId == null) {
+          try {
+            final jsonData = jsonDecode(responseBody);
+            debugPrint('Parsed JSON response: $jsonData');
+            if (jsonData['result'] != null) {
+              _sessionId = jsonData['result']['sessionId'] as String?;
+              _sessionId ??= jsonData['result']['session_id'] as String?;
+              if (_sessionId != null) {
+                debugPrint('MCP Session ID from JSON result: $_sessionId');
+              }
             }
-          }
-        } catch (e) {
-          // If not JSON, try parsing as SSE
-          final lines = responseBody.split('\n');
-          for (final line in lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                final data = jsonDecode(line.substring(6));
-                if (data['id'] != null && data['result'] != null) {
-                  _sessionId = data['result']['sessionId'] as String?;
-                  if (_sessionId == null) {
-                    // Try alternative paths
-                    _sessionId = data['result']?['session_id'] as String?;
+            // Also check top level
+            _sessionId ??= jsonData['sessionId'] as String?;
+            _sessionId ??= jsonData['session_id'] as String?;
+          } catch (e) {
+            debugPrint('Error parsing as JSON: $e');
+            // If not JSON, try parsing as SSE
+            final lines = responseBody.split('\n');
+            for (final line in lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  final data = jsonDecode(line.substring(6));
+                  debugPrint('Parsed SSE data: $data');
+                  if (data['id'] != null && data['result'] != null) {
+                    _sessionId = data['result']['sessionId'] as String?;
+                    _sessionId ??= data['result']['session_id'] as String?;
                     _sessionId ??= data['sessionId'] as String?;
+                    _sessionId ??= data['session_id'] as String?;
+                    if (_sessionId != null) {
+                      debugPrint('MCP Session ID from SSE: $_sessionId');
+                      break;
+                    }
                   }
-                  if (_sessionId != null) {
-                    debugPrint('MCP Session initialized with ID: $_sessionId');
-                  }
-                  break;
+                } catch (e) {
+                  debugPrint('Error parsing SSE line: $e');
                 }
-              } catch (e) {
-                debugPrint('Error parsing SSE line: $e');
               }
             }
           }
@@ -227,6 +244,59 @@ class MCPClient {
       _pendingRequests.remove(requestId);
       rethrow;
     }
+  }
+
+  /// Search patients using FHIR search parameters
+  Future<List<Patient>> searchPatients({
+    String? name,
+    String? birthdate,
+  }) async {
+    String path = '/Patient';
+    List<String> params = [];
+    
+    if (name != null && name.isNotEmpty) {
+      params.add('name=$name');
+    }
+    if (birthdate != null && birthdate.isNotEmpty) {
+      params.add('birthdate=$birthdate');
+    }
+    
+    if (params.isNotEmpty) {
+      path += '?${params.join('&')}';
+    }
+    
+    debugPrint('Searching patients with path: $path');
+    
+    final result = await callTool('request_patient_resource', {
+      'request': {
+        'method': 'GET',
+        'path': path,
+        'body': null,
+      }
+    });
+
+    // Parse result
+    var resultData = result['result'];
+    if (resultData is Map && resultData.containsKey('content')) {
+      final content = resultData['content'] as List;
+      if (content.isNotEmpty) {
+        final textContent = content[0]['text'] as String;
+        resultData = jsonDecode(textContent);
+      }
+    }
+
+    if (resultData is Map && resultData.containsKey('response')) {
+      final response = resultData['response'] as Map;
+      if (response.containsKey('entry')) {
+        final entries = response['entry'] as List;
+        return entries.map((entry) {
+          final resource = entry['resource'] as Map<String, dynamic>;
+          return Patient.fromJson(Map<String, dynamic>.from(resource));
+        }).toList();
+      }
+    }
+
+    return [];
   }
 
   /// Get list of patients

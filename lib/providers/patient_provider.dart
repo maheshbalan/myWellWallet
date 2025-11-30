@@ -87,7 +87,7 @@ class PatientProvider with ChangeNotifier {
     }
   }
 
-  /// Search patient by name and date of birth
+  /// Search patient by name and date of birth using FHIR search
   Future<void> searchPatientByNameAndDOB(String name, DateTime dateOfBirth) async {
     _isLoading = true;
     _error = null;
@@ -95,35 +95,49 @@ class PatientProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Get all patients and search by name and DOB
-      final allPatients = await mcpClient.getPatients();
-      
-      // Try to find patient by name and DOB match
+      // Use FHIR search with name and birthdate parameters
       final dobString = dateOfBirth.toIso8601String().split('T')[0]; // YYYY-MM-DD format
       
-      final matchingPatient = allPatients.firstWhere(
-        (patient) {
-          final patientName = patient.displayName.toLowerCase();
-          final searchName = name.toLowerCase();
-          final nameMatches = patientName.contains(searchName) || searchName.contains(patientName);
-          
-          // Check DOB if available
-          bool dobMatches = true;
-          if (patient.birthDate != null) {
-            final patientDob = patient.birthDate!.split('T')[0];
-            dobMatches = patientDob == dobString;
-          }
-          
-          return nameMatches && dobMatches;
-        },
-        orElse: () => throw Exception('No matching patient found with name and DOB'),
+      // Search using FHIR search parameters
+      final patients = await mcpClient.searchPatients(
+        name: name,
+        birthdate: dobString,
       );
+      
+      if (patients.isEmpty) {
+        throw Exception('No patient found with name "$name" and DOB $dobString');
+      }
+      
+      // If multiple results, try to find exact match
+      Patient? matchingPatient;
+      for (var patient in patients) {
+        final patientName = patient.displayName.toLowerCase();
+        final searchName = name.toLowerCase();
+        final nameMatches = patientName.contains(searchName) || searchName.contains(patientName);
+        
+        bool dobMatches = true;
+        if (patient.birthDate != null) {
+          final patientDob = patient.birthDate!.split('T')[0];
+          dobMatches = patientDob == dobString;
+        }
+        
+        if (nameMatches && dobMatches) {
+          matchingPatient = patient;
+          break;
+        }
+      }
+      
+      if (matchingPatient == null && patients.isNotEmpty) {
+        // Use first result if no exact match
+        matchingPatient = patients.first;
+      }
       
       _foundPatient = matchingPatient;
       _error = null;
     } catch (e) {
       _error = 'Patient not found: $e';
       _foundPatient = null;
+      debugPrint('Error searching patient: $e');
     } finally {
       _isLoading = false;
       notifyListeners();

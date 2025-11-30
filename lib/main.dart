@@ -191,16 +191,22 @@ final GoRouter _router = GoRouter(
   redirect: (context, state) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     
-    // If no user, go to registration
+    // If no user exists, go to registration (one-time setup)
     if (authProvider.currentUser == null && state.uri.path != '/register') {
       return '/register';
     }
     
-    // If user exists but not authenticated, go to login
+    // If user exists but not authenticated, go to login (normal flow after registration)
+    // Never redirect to registration if user already exists
     if (authProvider.currentUser != null && 
         !authProvider.isAuthenticated && 
         state.uri.path != '/login' && 
         state.uri.path != '/register') {
+      return '/login';
+    }
+    
+    // Prevent access to registration if user already exists
+    if (authProvider.currentUser != null && state.uri.path == '/register') {
       return '/login';
     }
     
