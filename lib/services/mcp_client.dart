@@ -356,16 +356,35 @@ class MCPClient {
       }
     });
 
-    // Parse result
+    // Parse result - server now returns structuredContent or content with text
     var resultData = result['result'];
+    
+    // Check for structuredContent first (new format)
+    if (resultData is Map && resultData.containsKey('structuredContent')) {
+      final structured = resultData['structuredContent'] as Map;
+      if (structured.containsKey('result')) {
+        resultData = structured['result'] as Map;
+      }
+    }
+    
+    // Fallback to content[0].text format
     if (resultData is Map && resultData.containsKey('content')) {
       final content = resultData['content'] as List;
       if (content.isNotEmpty) {
-        final textContent = content[0]['text'] as String;
-        resultData = jsonDecode(textContent);
+        final contentItem = content[0] as Map;
+        // Check if text is a string or already parsed
+        if (contentItem.containsKey('text')) {
+          final textContent = contentItem['text'];
+          if (textContent is String) {
+            resultData = jsonDecode(textContent);
+          } else if (textContent is Map) {
+            resultData = textContent;
+          }
+        }
       }
     }
 
+    // Extract response from resultData
     if (resultData is Map && resultData.containsKey('response')) {
       final response = resultData['response'] as Map;
       if (response.containsKey('entry')) {
@@ -390,22 +409,50 @@ class MCPClient {
       }
     });
 
-    // Parse result
+    // Parse result - server now returns structuredContent or content with text
     var resultData = result['result'];
+    
+    // Check for structuredContent first (new format)
+    if (resultData is Map && resultData.containsKey('structuredContent')) {
+      final structured = resultData['structuredContent'] as Map;
+      if (structured.containsKey('result')) {
+        resultData = structured['result'] as Map;
+      }
+    }
+    
+    // Fallback to content[0].text format
     if (resultData is Map && resultData.containsKey('content')) {
       final content = resultData['content'] as List;
       if (content.isNotEmpty) {
-        final textContent = content[0]['text'] as String;
-        resultData = jsonDecode(textContent);
+        final contentItem = content[0] as Map;
+        // Check if text is a string or already parsed
+        if (contentItem.containsKey('text')) {
+          final textContent = contentItem['text'];
+          if (textContent is String) {
+            resultData = jsonDecode(textContent);
+          } else if (textContent is Map) {
+            resultData = textContent;
+          }
+        }
       }
     }
 
-    if (resultData is Map && resultData.containsKey('response')) {
-      final patientData = resultData['response'] as Map<String, dynamic>;
-      return Patient.fromJson(Map<String, dynamic>.from(patientData));
+    // Extract response - could be direct response or nested in response field
+    Map<String, dynamic>? patientData;
+    if (resultData is Map) {
+      if (resultData.containsKey('response')) {
+        patientData = resultData['response'] as Map<String, dynamic>;
+      } else if (resultData.containsKey('resourceType') && resultData['resourceType'] == 'Patient') {
+        // Direct patient resource
+        patientData = resultData as Map<String, dynamic>;
+      }
     }
 
-    throw Exception('Invalid patient data');
+    if (patientData != null) {
+      return Patient.fromJson(patientData);
+    }
+
+    throw Exception('Invalid patient data: No patient resource found in response');
   }
 
   String _generateId() {
