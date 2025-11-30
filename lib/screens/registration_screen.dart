@@ -57,12 +57,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Account created successfully!'),
+              content: Text('Account created successfully! Please login with biometric or PIN.'),
               backgroundColor: Colors.green,
             ),
           );
         }
-        context.go('/');
+        // Redirect to login after registration - user will authenticate with biometric/PIN
+        context.go('/login');
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
