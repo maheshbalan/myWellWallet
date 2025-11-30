@@ -11,6 +11,7 @@ import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/patient_list_screen.dart';
 import 'screens/patient_detail_screen.dart';
+import 'test/mcp_sse_test_screen.dart';
 
 void main() {
   runApp(const MyWellWalletApp());
@@ -238,6 +239,12 @@ final GoRouter _router = GoRouter(
       builder: (context, state) {
         final patientId = state.pathParameters['id']!;
         return PatientDetailScreen(patientId: patientId);
+      },
+    ),
+    GoRoute(
+      path: '/test-sse',
+      builder: (context, state) {
+        return const MCPSSETestScreen();
       },
     ),
   ],
