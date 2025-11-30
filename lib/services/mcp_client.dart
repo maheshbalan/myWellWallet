@@ -161,20 +161,6 @@ class MCPClient {
       await initialize();
     }
     
-    // Workaround for FastMCP bug: Call tools/list first to ensure session is ready
-    // This is a known issue where tools can be listed but not called
-    // Calling list first sometimes helps establish the session properly
-    try {
-      await listTools();
-      debugPrint('Tools listed successfully, session appears ready');
-    } catch (e) {
-      debugPrint('Warning: Failed to list tools before calling: $e');
-      // Continue anyway - might still work
-    }
-    
-    // Small delay to ensure session is fully ready
-    await Future.delayed(const Duration(milliseconds: 200));
-    
     final result = await _sendRequest('tools/call', {
       'name': toolName,
       'arguments': arguments,
@@ -182,13 +168,11 @@ class MCPClient {
     
     debugPrint('Tool call result: $result');
     
-    // Check if we got the "Unknown tool" error - this is a known FastMCP bug
+    // Check for errors in response
     if (result['result'] != null && result['result']['isError'] == true) {
       final errorText = result['result']['content']?[0]?['text'] as String?;
-      if (errorText != null && errorText.contains('Unknown tool')) {
-        debugPrint('Known FastMCP bug: Tool exists but server says "Unknown tool"');
-        debugPrint('This is a known issue with FastMCP 2.13.1 HTTP/SSE transport');
-        throw Exception('Server error: $errorText (Known FastMCP bug - tools can be listed but not called over HTTP/SSE)');
+      if (errorText != null) {
+        throw Exception('Server error: $errorText');
       }
     }
     
