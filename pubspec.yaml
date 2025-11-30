@@ -15,7 +15,6 @@ dependencies:
   
   # HTTP
   http: ^1.1.0
-  sse: ^4.1.0  # Server-Sent Events for persistent SSE connection
   
   # UI Components
   cupertino_icons: ^1.0.6
@@ -36,7 +35,7 @@ dependencies:
   
   # Icons
   font_awesome_flutter: ^10.6.0
-  
+
   # Authentication
   local_auth: ^2.3.0
   crypto: ^3.0.3

@@ -187,6 +187,7 @@ class MCPClient {
 
     try {
       // Build headers with session ID - REQUIRED for all requests after initialize
+      // Accept header must include both application/json and text/event-stream
       final headers = <String, String>{
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',

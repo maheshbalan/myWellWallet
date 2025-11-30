@@ -1,26 +1,24 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:sse/client/sse_client.dart';
 import 'package:http/http.dart' as http;
 import '../models/patient.dart';
 
-/// MCP Client with persistent SSE connection for FHIR MCP Server
-/// This follows the README_MOBILE_CLIENT.md recommendation for persistent SSE
+/// MCP Client with persistent session management for FHIR MCP Server
+/// This follows the README_MOBILE_CLIENT.md recommendation for persistent session
+/// Note: For mobile, we maintain session state via session ID in headers rather than true SSE stream
 class MCPClientSSE {
   final String baseUrl;
-  SseClient? _sseClient;
   String? _sessionId;
   bool _initialized = false;
   final Map<String, Completer<Map<String, dynamic>>> _pendingRequests = {};
-  StreamSubscription<String>? _eventSubscription;
   Timer? _keepAliveTimer;
 
   MCPClientSSE({required this.baseUrl});
 
-  /// Initialize MCP session with persistent SSE connection
+  /// Initialize MCP session with persistent session management
   Future<void> initialize() async {
-    if (_initialized && _sseClient != null) return;
+    if (_initialized && _sessionId != null) return;
 
     try {
       debugPrint('Initializing MCP SSE connection to: $baseUrl/mcp');
@@ -89,11 +87,11 @@ class MCPClientSSE {
           }),
         );
         
-        // Now establish persistent SSE connection
-        await _establishSSEConnection();
+        // Session established - maintain it via keep-alive
+        _startKeepAlive();
         
         _initialized = true;
-        debugPrint('MCP SSE Client initialized successfully');
+        debugPrint('MCP Client initialized successfully with persistent session');
       } else {
         throw Exception('Failed to initialize: ${initResponse.statusCode}');
       }
@@ -104,29 +102,13 @@ class MCPClientSSE {
     }
   }
 
-  /// Establish persistent SSE connection
-  Future<void> _establishSSEConnection() async {
-    try {
-      // Create SSE client - the sse package connects to an SSE endpoint
-      // For MCP, we'll use a dedicated SSE endpoint if available, or maintain connection via POST
-      final uri = Uri.parse('$baseUrl/mcp');
-      
-      // Note: The MCP server might not have a dedicated SSE endpoint
-      // So we'll maintain the session and use HTTP POST with SSE responses
-      // This is a hybrid approach that maintains session state
-      
-      debugPrint('SSE connection setup (using session-based approach)');
-      
-      // Start keep-alive timer (send ping every 30 seconds to maintain session)
-      _keepAliveTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-        _sendKeepAlive();
-      });
-      
-      debugPrint('Session-based connection established');
-    } catch (e) {
-      debugPrint('Failed to establish connection: $e');
-      rethrow;
-    }
+  /// Start keep-alive to maintain session
+  void _startKeepAlive() {
+    // Start keep-alive timer (send ping every 30 seconds to maintain session)
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _sendKeepAlive();
+    });
+    debugPrint('Keep-alive timer started');
   }
 
   /// Handle incoming SSE events (from HTTP POST responses)
@@ -156,25 +138,15 @@ class MCPClientSSE {
     }
   }
 
-  /// Handle connection errors (for future use if we implement true SSE)
-  void _handleConnectionError(dynamic error) {
-    debugPrint('Connection error: $error');
-    // Reinitialize session
-    _reconnect();
-  }
-
-  /// Handle connection closed (for future use if we implement true SSE)
-  void _handleConnectionClosed() {
-    debugPrint('Connection closed');
-    // Reinitialize session
-    _reconnect();
-  }
+  // Note: Connection error/closed handlers removed as we're using HTTP POST approach
+  // These would be used if we implement a true persistent SSE stream connection
 
   /// Reconnect (reinitialize session)
   Future<void> _reconnect() async {
     try {
       _initialized = false;
       _sessionId = null;
+      _keepAliveTimer?.cancel();
       await Future.delayed(const Duration(seconds: 2));
       await initialize();
       debugPrint('Session reinitialized');
@@ -183,16 +155,15 @@ class MCPClientSSE {
     }
   }
 
-  /// Send keep-alive ping
+  /// Send keep-alive ping to maintain session
   void _sendKeepAlive() {
-    if (_sseClient != null && _sessionId != null) {
-      // Send a simple ping to keep connection alive
-      // This is done via HTTP POST since SSE is one-way
+    if (_sessionId != null) {
+      // Send a simple ping to keep session alive
       http.post(
         Uri.parse('$baseUrl/mcp'),
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
+          'Accept': 'application/json, text/event-stream',
           'Mcp-Session-Id': _sessionId!,
         },
         body: jsonEncode({
@@ -221,20 +192,26 @@ class MCPClientSSE {
 
     try {
       // Send request via HTTP POST with session ID (maintaining persistent session)
-      final response = await http.post(
-        Uri.parse('$baseUrl/mcp'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-          'Mcp-Session-Id': _sessionId!,
-        },
-        body: jsonEncode({
-          'jsonrpc': '2.0',
-          'id': requestId,
-          'method': method,
-          'params': params,
-        }),
-      );
+      http.Response response;
+      try {
+        response = await http.post(
+          Uri.parse('$baseUrl/mcp'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
+            'Mcp-Session-Id': _sessionId!,
+          },
+          body: jsonEncode({
+            'jsonrpc': '2.0',
+            'id': requestId,
+            'method': method,
+            'params': params,
+          }),
+        );
+      } catch (error) {
+        _pendingRequests.remove(requestId);
+        throw Exception('Network error: $error');
+      }
 
       if (response.statusCode != 200) {
         _pendingRequests.remove(requestId);
@@ -369,12 +346,6 @@ class MCPClientSSE {
   Future<void> _disconnect() async {
     _keepAliveTimer?.cancel();
     _keepAliveTimer = null;
-    await _eventSubscription?.cancel();
-    _eventSubscription = null;
-    if (_sseClient != null) {
-      _sseClient!.close();
-      _sseClient = null;
-    }
   }
 
   /// Dispose resources

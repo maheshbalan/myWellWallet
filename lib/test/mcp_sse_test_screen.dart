@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import '../services/mcp_client_sse.dart';
 import '../models/patient.dart';
 
@@ -19,7 +18,7 @@ class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
   bool _isInitialized = false;
   bool _isLoading = false;
   String _status = 'Not initialized';
-  List<String> _logs = [];
+  final List<String> _logs = [];
   List<Patient> _patients = [];
 
   @override
