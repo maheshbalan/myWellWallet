@@ -357,49 +357,53 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
           ),
           
-          // Follow-up Prompts (stacked vertically, max 3, always visible when available)
-          if (_followUpPrompts.isNotEmpty)
-            Container(
-              constraints: const BoxConstraints(maxHeight: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _followUpPrompts.length > 3 ? 3 : _followUpPrompts.length,
-                itemBuilder: (context, index) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Card(
-                      child: InkWell(
-                        onTap: () => _handleFollowUpPrompt(_followUpPrompts[index]),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Row(
-                            children: [
-                              Icon(
-                                FontAwesomeIcons.lightbulb,
-                                size: 16,
-                                color: colorScheme.primary,
+          // Bottom Section: Prompts + Search Bar (always visible)
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Follow-up Prompts (stacked vertically, max 3)
+              if (_followUpPrompts.isNotEmpty)
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _followUpPrompts.length > 3 ? 3 : _followUpPrompts.length,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Card(
+                          child: InkWell(
+                            onTap: () => _handleFollowUpPrompt(_followUpPrompts[index]),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    FontAwesomeIcons.lightbulb,
+                                    size: 16,
+                                    color: colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      _followUpPrompts[index],
+                                      style: Theme.of(context).textTheme.bodyMedium,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  _followUpPrompts[index],
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          
-          // Search Bar (always accessible at bottom)
-          Container(
+                      );
+                    },
+                  ),
+                ),
+              
+              // Search Bar (always accessible at bottom)
+              Container(
             padding: const EdgeInsets.all(16.0),
             decoration: BoxDecoration(
               color: Colors.white,

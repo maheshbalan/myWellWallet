@@ -43,11 +43,15 @@ class MCPClient {
         debugPrint('Init response body: $responseBody');
         debugPrint('Init response headers: ${initResponse.headers}');
         
-        // Check if session ID is in response headers
-        final sessionIdFromHeader = initResponse.headers['mcp-session-id'] ?? 
-                                   initResponse.headers['Mcp-Session-Id'] ??
-                                   initResponse.headers['x-session-id'];
-        if (sessionIdFromHeader != null) {
+        // Check if session ID is in response headers (case-insensitive)
+        String? sessionIdFromHeader;
+        for (var key in initResponse.headers.keys) {
+          if (key.toLowerCase() == 'mcp-session-id') {
+            sessionIdFromHeader = initResponse.headers[key];
+            break;
+          }
+        }
+        if (sessionIdFromHeader != null && sessionIdFromHeader.isNotEmpty) {
           _sessionId = sessionIdFromHeader;
           debugPrint('MCP Session ID from header: $_sessionId');
         }
@@ -200,24 +204,39 @@ class MCPClient {
       if (response.statusCode == 200) {
         // Parse SSE response
         final lines = response.body.split('\n');
+        Map<String, dynamic>? foundResponse;
+        
         for (final line in lines) {
           if (line.startsWith('data: ')) {
             try {
               final data = jsonDecode(line.substring(6));
-              if (data['id'] == requestId) {
-                _pendingRequests.remove(requestId);
-                if (data['error'] != null) {
-                  final errorMsg = data['error']['message'] ?? 'Unknown error';
-                  completer.completeError(Exception(errorMsg));
-                } else {
-                  completer.complete(data);
-                }
+              // Match by request ID
+              if (data['id'] != null && data['id'].toString() == requestId.toString()) {
+                foundResponse = data;
                 break;
               }
+              // Also check if it's the only response
+              if (foundResponse == null && data['id'] != null) {
+                foundResponse = data;
+              }
             } catch (e) {
-              // Continue parsing
+              debugPrint('Error parsing SSE line: $e, line: $line');
             }
           }
+        }
+        
+        if (foundResponse != null) {
+          _pendingRequests.remove(requestId);
+          if (foundResponse['error'] != null) {
+            final errorMsg = foundResponse['error']['message'] ?? 'Unknown error';
+            completer.completeError(Exception(errorMsg));
+          } else {
+            completer.complete(foundResponse);
+          }
+        } else {
+          // No matching response found
+          _pendingRequests.remove(requestId);
+          completer.completeError(Exception('No response received for request $requestId'));
         }
 
         // Wait for response with timeout
@@ -369,4 +388,5 @@ class MCPClient {
     // Cleanup if needed
   }
 }
+
 
