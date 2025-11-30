@@ -26,6 +26,8 @@ dependencies:
   
   # Local Storage
   shared_preferences: ^2.2.2
+  sqflite: ^2.3.0  # SQLite database for local persistence
+  sqflite_common_ffi: ^2.3.0  # For better SQLite support
   
   # JSON
   json_annotation: ^4.9.0

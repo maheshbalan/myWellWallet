@@ -80,9 +80,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       final authProvider = context.read<AuthProvider>();
+      final user = authProvider.currentUser;
       await authProvider.updateUser(
         _nameController.text.trim(),
         _emailController.text.trim(),
+        user?.dateOfBirth, // Keep existing DOB if not editing it
       );
       
       // Reload patient data with new name

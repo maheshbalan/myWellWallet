@@ -189,17 +189,25 @@ class MyWellWalletApp extends StatelessWidget {
 
 final GoRouter _router = GoRouter(
   initialLocation: '/',
-  redirect: (context, state) {
+  redirect: (context, state) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     
+    // Wait for user loading to complete
+    while (authProvider.isLoading) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+    
+    // Check if user exists in database
+    final userExists = await authProvider.userExists();
+    
     // If no user exists, go to registration (one-time setup)
-    if (authProvider.currentUser == null && state.uri.path != '/register') {
+    if (!userExists && state.uri.path != '/register') {
       return '/register';
     }
     
     // If user exists but not authenticated, go to login (normal flow after registration)
     // Never redirect to registration if user already exists
-    if (authProvider.currentUser != null && 
+    if (userExists && 
         !authProvider.isAuthenticated && 
         state.uri.path != '/login' && 
         state.uri.path != '/register') {
@@ -207,7 +215,7 @@ final GoRouter _router = GoRouter(
     }
     
     // Prevent access to registration if user already exists
-    if (authProvider.currentUser != null && state.uri.path == '/register') {
+    if (userExists && state.uri.path == '/register') {
       return '/login';
     }
     

@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import '../models/patient.dart';
 import '../services/mcp_client.dart';
+import '../services/fhir_persistence_service.dart';
 
 class PatientProvider with ChangeNotifier {
   final MCPClient mcpClient;
+  final FHIRPersistenceService _persistenceService = FHIRPersistenceService();
   
   List<Patient> _patients = [];
   Patient? _selectedPatient;
@@ -98,7 +100,17 @@ class PatientProvider with ChangeNotifier {
       // Use FHIR search with name and birthdate parameters
       final dobString = dateOfBirth.toIso8601String().split('T')[0]; // YYYY-MM-DD format
       
-      // Search using FHIR search parameters
+      // Search using FHIR search parameters - get both patients and full response
+      final searchPath = '/Patient?name=${Uri.encodeComponent(name)}&birthdate=$dobString';
+      final fhirResponse = await mcpClient.callTool('request_patient_resource', {
+        'request': {
+          'method': 'GET',
+          'path': searchPath,
+          'body': null,
+        }
+      });
+      
+      // Parse patients from response
       final patients = await mcpClient.searchPatients(
         name: name,
         birthdate: dobString,
@@ -134,6 +146,20 @@ class PatientProvider with ChangeNotifier {
       
       _foundPatient = matchingPatient;
       _error = null;
+      
+      // Persist patient data to local database
+      if (matchingPatient != null) {
+        try {
+          await _persistenceService.savePatientData(
+            patient: matchingPatient!,
+            fhirResponse: fhirResponse,
+          );
+          debugPrint('Patient data persisted to local database');
+        } catch (e) {
+          debugPrint('Error persisting patient data: $e');
+          // Don't fail the search if persistence fails
+        }
+      }
     } catch (e) {
       _error = 'Patient not found: $e';
       _foundPatient = null;

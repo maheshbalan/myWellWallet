@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:math';
 import '../models/user.dart';
+import '../services/database_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final LocalAuthentication _localAuth = LocalAuthentication();
@@ -15,21 +16,21 @@ class AuthProvider with ChangeNotifier {
   bool get isAuthenticated => _isAuthenticated;
   bool get isLoading => _isLoading;
 
+  final DatabaseService _database = DatabaseService();
+
   AuthProvider() {
     _loadUser();
   }
 
-  /// Load user from local storage
+  /// Load user from database
   Future<void> _loadUser() async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final userJson = prefs.getString('user');
-      
-      if (userJson != null) {
-        _currentUser = User.fromJson(jsonDecode(userJson));
+      final users = await _database.getAllUsers();
+      if (users.isNotEmpty) {
+        _currentUser = users.first;
         // Don't auto-authenticate - require login
         _isAuthenticated = false;
       }
@@ -38,6 +39,16 @@ class AuthProvider with ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// Check if user exists in database
+  Future<bool> userExists() async {
+    try {
+      return await _database.userExists();
+    } catch (e) {
+      debugPrint('Error checking if user exists: $e');
+      return false;
     }
   }
 
@@ -60,16 +71,17 @@ class AuthProvider with ChangeNotifier {
   }
 
   /// Update user profile
-  Future<void> updateUser(String name, String email) async {
+  Future<void> updateUser(String name, String email, DateTime? dateOfBirth) async {
     if (_currentUser == null) return;
     
     final updatedUser = _currentUser!.copyWith(
       name: name,
       email: email,
+      dateOfBirth: dateOfBirth,
     );
     
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user', jsonEncode(updatedUser.toJson()));
+    // Update in database
+    await _database.saveUser(updatedUser);
     
     _currentUser = updatedUser;
     notifyListeners();
@@ -81,6 +93,12 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      // Check if user already exists
+      final exists = await _database.userExists();
+      if (exists) {
+        throw Exception('User already exists. Please login instead.');
+      }
+
       // Create user first
       final user = User(
         id: _generateUserId(),
@@ -90,10 +108,8 @@ class AuthProvider with ChangeNotifier {
         createdAt: DateTime.now(),
       );
 
-      // Save user locally
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user', jsonEncode(user.toJson()));
-
+      // Save user to database
+      await _database.saveUser(user);
       _currentUser = user;
 
       // Try to register biometric credentials (passkey) - make it optional
@@ -205,9 +221,25 @@ class AuthProvider with ChangeNotifier {
     _isAuthenticated = false;
     _currentUser = null;
     
+    // Clear biometric flag from SharedPreferences (keep user in database)
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('user');
     await prefs.remove('biometric_enabled');
+    await prefs.remove('user_pin');
+    
+    notifyListeners();
+  }
+
+  /// Delete user account (removes from database)
+  Future<void> deleteAccount() async {
+    if (_currentUser == null) return;
+    
+    await _database.deleteUser(_currentUser!.id);
+    _currentUser = null;
+    _isAuthenticated = false;
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('biometric_enabled');
+    await prefs.remove('user_pin');
     
     notifyListeners();
   }
