@@ -190,11 +190,8 @@ class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/');
-            }
+            // Always go back to home instead of pop to avoid navigation stack issues
+            context.go('/');
           },
         ),
       ),
