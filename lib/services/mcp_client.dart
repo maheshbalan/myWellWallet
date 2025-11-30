@@ -38,34 +38,56 @@ class MCPClient {
       );
 
       if (initResponse.statusCode == 200) {
-        // Parse SSE response
-        final lines = initResponse.body.split('\n');
-        for (final line in lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              final data = jsonDecode(line.substring(6));
-              if (data['id'] != null && data['result'] != null) {
-                _sessionId = data['result']['sessionId'] as String?;
-                if (_sessionId != null) {
-                  debugPrint('MCP Session initialized with ID: $_sessionId');
+        // Parse SSE response or JSON response
+        String responseBody = initResponse.body;
+        debugPrint('Init response body: $responseBody');
+        
+        // Try parsing as JSON first (non-SSE response)
+        try {
+          final jsonData = jsonDecode(responseBody);
+          if (jsonData['result'] != null) {
+            _sessionId = jsonData['result']['sessionId'] as String?;
+            if (_sessionId != null) {
+              debugPrint('MCP Session initialized with ID: $_sessionId');
+            }
+          }
+        } catch (e) {
+          // If not JSON, try parsing as SSE
+          final lines = responseBody.split('\n');
+          for (final line in lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                final data = jsonDecode(line.substring(6));
+                if (data['id'] != null && data['result'] != null) {
+                  _sessionId = data['result']['sessionId'] as String?;
+                  if (_sessionId == null) {
+                    // Try alternative paths
+                    _sessionId = data['result']?['session_id'] as String?;
+                    _sessionId ??= data['sessionId'] as String?;
+                  }
+                  if (_sessionId != null) {
+                    debugPrint('MCP Session initialized with ID: $_sessionId');
+                  }
+                  break;
                 }
-                break;
+              } catch (e) {
+                debugPrint('Error parsing SSE line: $e');
               }
-            } catch (e) {
-              debugPrint('Error parsing init response: $e');
             }
           }
         }
 
         // Send initialized notification with session ID
         if (_sessionId != null) {
+          final initNotifyHeaders = <String, String>{
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
+            'Mcp-Session-Id': _sessionId!,
+          };
+          
           await http.post(
             Uri.parse('$baseUrl/mcp'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json, text/event-stream',
-              'X-Session-ID': _sessionId!,
-            },
+            headers: initNotifyHeaders,
             body: jsonEncode({
               'jsonrpc': '2.0',
               'id': _generateId(),
@@ -73,10 +95,14 @@ class MCPClient {
               'params': {'sessionId': _sessionId},
             }),
           );
+          debugPrint('Initialized notification sent with session ID');
+        } else {
+          debugPrint('Warning: Session ID not found in init response');
         }
 
         _initialized = true;
       } else {
+        debugPrint('Init failed with status: ${initResponse.statusCode}, body: ${initResponse.body}');
         throw Exception('Failed to initialize: ${initResponse.statusCode}');
       }
     } catch (e) {
@@ -127,13 +153,17 @@ class MCPClient {
         'Accept': 'application/json, text/event-stream',
       };
       
+      // Use Mcp-Session-Id header as per MCP specification
       if (_sessionId != null) {
-        headers['X-Session-ID'] = _sessionId!;
+        headers['Mcp-Session-Id'] = _sessionId!;
+        debugPrint('Sending request with session ID: $_sessionId');
+      } else {
+        debugPrint('Warning: Sending request without session ID');
       }
 
       // Build request body with session ID in params if needed
       final requestParams = Map<String, dynamic>.from(params);
-      if (_sessionId != null && method != 'initialize') {
+      if (_sessionId != null && method != 'initialize' && method != 'notifications/initialized') {
         requestParams['sessionId'] = _sessionId;
       }
 

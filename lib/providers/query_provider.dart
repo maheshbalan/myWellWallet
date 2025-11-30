@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
 import '../services/mcp_client.dart';
 import '../services/nlp_service.dart';
+import '../services/gemma_service.dart';
 
 class QueryProvider with ChangeNotifier {
   final MCPClient mcpClient;
   final NLPService nlpService = NLPService();
+  final GemmaService gemmaService = GemmaService();
   
   String? _lastQuery;
   Map<String, dynamic>? _lastResult;
@@ -28,8 +30,16 @@ class QueryProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Interpret the query using NLP service
-      final interpretation = await nlpService.interpretQuery(query);
+      // Interpret the query using Gemma service with context awareness
+      final interpretation = await gemmaService.interpretQueryWithContext(query);
+      
+      // Fallback to NLP service if Gemma doesn't provide tool
+      if (interpretation['tool'] == null || interpretation['tool'] == 'request_generic_resource') {
+        final nlpInterpretation = await nlpService.interpretQuery(query);
+        interpretation['tool'] = nlpInterpretation['tool'];
+        interpretation['params'] = nlpInterpretation['params'];
+        interpretation['intent'] = nlpInterpretation['intent'];
+      }
       
       // Call the appropriate MCP tool
       final result = await mcpClient.callTool(
