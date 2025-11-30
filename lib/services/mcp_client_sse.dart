@@ -173,6 +173,7 @@ class MCPClientSSE {
         }),
       ).catchError((e) {
         debugPrint('Keep-alive ping failed: $e');
+        return http.Response('', 500); // Return a response to satisfy the type checker
       });
     }
   }

@@ -58,8 +58,8 @@ class FHIRPersistenceService {
 
       // Save patient bundle
       await _database.savePatientBundle(
-        patientId: patient.id,
-        patientName: patient.displayName,
+        patientId: patient.id ?? 'unknown',
+        patientName: patient.displayName ?? 'Unknown Patient',
         fhirBundle: bundle,
       );
 
@@ -114,8 +114,8 @@ class FHIRPersistenceService {
           };
 
           await _database.savePatientBundle(
-            patientId: patient.id,
-            patientName: patient.displayName,
+            patientId: patient.id ?? 'unknown',
+            patientName: patient.displayName ?? 'Unknown Patient',
             fhirBundle: patientBundle,
           );
         }

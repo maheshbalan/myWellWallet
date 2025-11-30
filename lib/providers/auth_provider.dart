@@ -112,6 +112,9 @@ class AuthProvider with ChangeNotifier {
       await _database.saveUser(user);
       _currentUser = user;
 
+      // Get SharedPreferences for biometric flags (still needed for biometric state)
+      final prefs = await SharedPreferences.getInstance();
+
       // Try to register biometric credentials (passkey) - make it optional
       try {
         final isDeviceSupported = await _localAuth.isDeviceSupported();
