@@ -319,13 +319,52 @@ class MCPClientSSE {
       if (response.containsKey('entry')) {
         final entries = response['entry'] as List;
         return entries.map((entry) {
-          final resource = entry['resource'] as Map<String, dynamic>;
-          return Patient.fromJson(Map<String, dynamic>.from(resource));
+          try {
+            final resource = entry['resource'] as Map<String, dynamic>;
+            // Clean up the resource to ensure all fields are properly typed
+            final cleanedResource = _cleanPatientResource(resource);
+            return Patient.fromJson(cleanedResource);
+          } catch (e) {
+            debugPrint('Error parsing patient resource: $e');
+            debugPrint('Entry data: ${entry.toString().substring(0, entry.toString().length > 500 ? 500 : entry.toString().length)}');
+            rethrow;
+          }
         }).toList();
       }
     }
 
     return [];
+  }
+
+  /// Clean patient resource to handle FHIR complex types that might be Maps instead of Strings
+  Map<String, dynamic> _cleanPatientResource(Map<String, dynamic> resource) {
+    final cleaned = Map<String, dynamic>.from(resource);
+    
+    // Handle identifier.type which might be a CodeableConcept (Map) instead of String
+    if (cleaned.containsKey('identifier') && cleaned['identifier'] is List) {
+      final identifiers = (cleaned['identifier'] as List).map((id) {
+        if (id is Map) {
+          final idMap = Map<String, dynamic>.from(id);
+          // If type is a Map (CodeableConcept), extract text or code
+          if (idMap.containsKey('type') && idMap['type'] is Map) {
+            final typeMap = idMap['type'] as Map;
+            if (typeMap.containsKey('text')) {
+              idMap['type'] = typeMap['text'] as String?;
+            } else if (typeMap.containsKey('coding') && (typeMap['coding'] as List).isNotEmpty) {
+              final coding = (typeMap['coding'] as List).first as Map;
+              idMap['type'] = coding['display'] ?? coding['code'] ?? null;
+            } else {
+              idMap['type'] = null;
+            }
+          }
+          return idMap;
+        }
+        return id;
+      }).toList();
+      cleaned['identifier'] = identifiers;
+    }
+    
+    return cleaned;
   }
 
   /// Get list of patients
