@@ -340,6 +340,17 @@ class MCPClientSSE {
   Map<String, dynamic> _cleanPatientResource(Map<String, dynamic> resource) {
     final cleaned = Map<String, dynamic>.from(resource);
     
+    // Handle top-level fields that should be String but might be Map
+    if (cleaned.containsKey('gender') && cleaned['gender'] is Map) {
+      final genderMap = cleaned['gender'] as Map;
+      cleaned['gender'] = genderMap['value'] ?? genderMap['code'] ?? null;
+    }
+    
+    if (cleaned.containsKey('birthDate') && cleaned['birthDate'] is Map) {
+      final birthDateMap = cleaned['birthDate'] as Map;
+      cleaned['birthDate'] = birthDateMap['value'] ?? birthDateMap['date'] ?? null;
+    }
+    
     // Handle identifier.type which might be a CodeableConcept (Map) instead of String
     if (cleaned.containsKey('identifier') && cleaned['identifier'] is List) {
       final identifiers = (cleaned['identifier'] as List).map((id) {
@@ -362,6 +373,34 @@ class MCPClientSSE {
         return id;
       }).toList();
       cleaned['identifier'] = identifiers;
+    }
+    
+    // Handle name array - ensure all fields are properly typed
+    if (cleaned.containsKey('name') && cleaned['name'] is List) {
+      final names = (cleaned['name'] as List).map((name) {
+        if (name is Map) {
+          final nameMap = Map<String, dynamic>.from(name);
+          // Ensure use, family are strings
+          if (nameMap.containsKey('use') && nameMap['use'] is Map) {
+            nameMap['use'] = (nameMap['use'] as Map)['value'] ?? null;
+          }
+          if (nameMap.containsKey('family') && nameMap['family'] is Map) {
+            nameMap['family'] = (nameMap['family'] as Map)['value'] ?? null;
+          }
+          // Ensure given is a List<String>
+          if (nameMap.containsKey('given') && nameMap['given'] is List) {
+            nameMap['given'] = (nameMap['given'] as List).map((g) {
+              if (g is Map) {
+                return (g as Map)['value'] ?? g['code'] ?? null;
+              }
+              return g;
+            }).whereType<String>().toList();
+          }
+          return nameMap;
+        }
+        return name;
+      }).toList();
+      cleaned['name'] = names;
     }
     
     return cleaned;
