@@ -7,6 +7,7 @@ class PatientProvider with ChangeNotifier {
   
   List<Patient> _patients = [];
   Patient? _selectedPatient;
+  Patient? _foundPatient;
   bool _isLoading = false;
   String? _error;
 
@@ -14,6 +15,7 @@ class PatientProvider with ChangeNotifier {
 
   List<Patient> get patients => _patients;
   Patient? get selectedPatient => _selectedPatient;
+  Patient? get foundPatient => _foundPatient;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
@@ -47,6 +49,38 @@ class PatientProvider with ChangeNotifier {
     } catch (e) {
       _error = 'Failed to load patient details: $e';
       _selectedPatient = null;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Search patient by name
+  Future<void> searchPatientByName(String name) async {
+    _isLoading = true;
+    _error = null;
+    _foundPatient = null;
+    notifyListeners();
+
+    try {
+      // Get all patients and search by name
+      final allPatients = await mcpClient.getPatients();
+      
+      // Try to find patient by name match
+      final matchingPatient = allPatients.firstWhere(
+        (patient) {
+          final patientName = patient.displayName.toLowerCase();
+          final searchName = name.toLowerCase();
+          return patientName.contains(searchName) || searchName.contains(patientName);
+        },
+        orElse: () => allPatients.isNotEmpty ? allPatients.first : throw Exception('No patients found'),
+      );
+      
+      _foundPatient = matchingPatient;
+      _error = null;
+    } catch (e) {
+      _error = 'Patient not found: $e';
+      _foundPatient = null;
     } finally {
       _isLoading = false;
       notifyListeners();

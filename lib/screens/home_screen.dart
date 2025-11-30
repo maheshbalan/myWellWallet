@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -6,6 +7,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
 import '../providers/query_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/patient_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,7 +20,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final _queryController = TextEditingController();
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isListening = false;
-  String _spokenText = '';
   bool _speechAvailable = false;
 
   @override
@@ -26,17 +27,30 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _initializeSpeech();
     _checkAuthentication();
+    _establishPatientContext();
+  }
+
+  Future<void> _establishPatientContext() async {
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.currentUser;
+    if (user != null) {
+      // Establish patient context from profile name
+      final patientProvider = context.read<PatientProvider>();
+      try {
+        await patientProvider.searchPatientByName(user.name);
+      } catch (e) {
+        debugPrint('Could not establish patient context: $e');
+      }
+    }
   }
 
   Future<void> _checkAuthentication() async {
     final authProvider = context.read<AuthProvider>();
     
-    // If user exists but not authenticated, prompt for biometrics
+    // If user exists but not authenticated, redirect to login
     if (authProvider.currentUser != null && !authProvider.isAuthenticated) {
-      final authenticated = await authProvider.authenticate();
-      if (!authenticated && mounted) {
-        // User cancelled authentication, redirect to registration
-        context.go('/register');
+      if (mounted) {
+        context.go('/login');
       }
     }
   }
@@ -53,11 +67,11 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         },
         onError: (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Speech error: ${error.errorMsg}')),
-        );
-      }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Speech error: ${error.errorMsg}')),
+            );
+          }
         },
       );
       if (mounted) {
@@ -68,33 +82,27 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _startListening() async {
-    if (!_speechAvailable) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Speech recognition not available')),
+  void _toggleListening() {
+    if (_isListening) {
+      _speech.stop();
+      setState(() {
+        _isListening = false;
+      });
+    } else {
+      if (!_speechAvailable) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Speech recognition not available')),
+        );
+        return;
+      }
+      _speech.listen(
+        onResult: (result) {
+          setState(() {
+            _queryController.text = result.recognizedWords;
+          });
+        },
       );
-      return;
     }
-
-    setState(() {
-      _spokenText = '';
-    });
-
-    await _speech.listen(
-      onResult: (result) {
-        setState(() {
-          _spokenText = result.recognizedWords;
-          _queryController.text = result.recognizedWords;
-        });
-      },
-    );
-  }
-
-  void _stopListening() {
-    _speech.stop();
-    setState(() {
-      _isListening = false;
-    });
   }
 
   Future<void> _processQuery() async {
@@ -103,6 +111,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final queryProvider = context.read<QueryProvider>();
     await queryProvider.processQuery(query);
+  }
+
+  void _handleSuggestedQuestion(String question) {
+    _queryController.text = question;
+    _processQuery();
   }
 
   @override
@@ -117,8 +130,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final authProvider = context.watch<AuthProvider>();
 
-    // Show registration if not authenticated
-    if (!authProvider.isAuthenticated && !authProvider.isLoading) {
+    // Redirect if not authenticated
+    if (authProvider.currentUser == null && !authProvider.isLoading) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         context.go('/register');
       });
@@ -127,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    if (authProvider.isLoading) {
+    if (!authProvider.isAuthenticated || authProvider.isLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -138,16 +151,16 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('MyWellWallet'),
         actions: [
           IconButton(
-            icon: const Icon(FontAwesomeIcons.users),
-            onPressed: () => context.go('/patients'),
-            tooltip: 'View Patients',
+            icon: const Icon(FontAwesomeIcons.user),
+            onPressed: () => context.go('/profile'),
+            tooltip: 'Profile',
           ),
           IconButton(
             icon: const Icon(FontAwesomeIcons.rightFromBracket),
             onPressed: () async {
               await context.read<AuthProvider>().logout();
               if (mounted) {
-                context.go('/register');
+                context.go('/login');
               }
             },
             tooltip: 'Logout',
@@ -158,23 +171,23 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             // Query Input Section
-            Container(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Welcome Section
                   Row(
-            children: [
+                    children: [
                       Container(
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          color: colorScheme.primary.withOpacity(0.1),
+                          color: colorScheme.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
-                FontAwesomeIcons.heartPulse,
+                          FontAwesomeIcons.heartPulse,
                           size: 28,
                           color: colorScheme.primary,
                         ),
@@ -188,7 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               'Hello, ${authProvider.currentUser?.name ?? "User"}',
                               style: Theme.of(context).textTheme.titleLarge,
                             ),
-              Text(
+                            Text(
                               'Ask me anything about your health records',
                               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 color: const Color(0xFF7F8C8D),
@@ -202,34 +215,30 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 32),
                   
                   // Query Input Card
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                          // Text Input
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          // Text Input with integrated mic
                           TextField(
                             controller: _queryController,
                             decoration: InputDecoration(
                               hintText: 'Type your question or tap the mic...',
                               border: InputBorder.none,
-                              suffixIcon: _isListening
-                                  ? IconButton(
-                                      icon: const Icon(
-                                        FontAwesomeIcons.circleStop,
-                                        color: Colors.red,
-                                      ),
-                                      onPressed: _stopListening,
-                                    )
-                                  : IconButton(
-                                      icon: Icon(
-                                        FontAwesomeIcons.microphone,
-                                        color: _speechAvailable
-                                            ? colorScheme.primary
-                                            : Colors.grey,
-                                      ),
-                                      onPressed: _speechAvailable ? _startListening : null,
-                                    ),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _isListening
+                                      ? FontAwesomeIcons.circleStop
+                                      : FontAwesomeIcons.microphone,
+                                  color: _isListening
+                                      ? Colors.red
+                                      : (_speechAvailable
+                                          ? colorScheme.primary
+                                          : Colors.grey),
+                                ),
+                                onPressed: _speechAvailable ? _toggleListening : null,
+                              ),
                             ),
                             maxLines: 3,
                             minLines: 1,
@@ -238,75 +247,22 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: 12),
                           
-                          // Action Buttons
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: _speechAvailable && !_isListening
-                                      ? _startListening
-                                      : null,
-                                  icon: Icon(
-                                    _isListening
-                                        ? FontAwesomeIcons.circleStop
-                                        : FontAwesomeIcons.microphone,
-                                    size: 16,
-                                  ),
-                                  label: Text(_isListening ? 'Listening...' : 'Voice Input'),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                flex: 2,
-                                child: ElevatedButton.icon(
-                                  onPressed: _processQuery,
-                                  icon: const Icon(FontAwesomeIcons.magnifyingGlass, size: 16),
-                                  label: const Text('Search'),
-                                  style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  
-                  // Spoken Text Display
-                  if (_spokenText.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            FontAwesomeIcons.microphoneLines,
-                            size: 16,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _spokenText,
-                              style: TextStyle(
-                                color: colorScheme.primary,
-                                fontStyle: FontStyle.italic,
+                          // Search Button
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _processQuery,
+                              icon: const Icon(FontAwesomeIcons.magnifyingGlass, size: 16),
+                              label: const Text('Search'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -346,10 +302,18 @@ class _HomeScreenState extends State<HomeScreen> {
                               style: Theme.of(context).textTheme.headlineMedium,
                             ),
                             const SizedBox(height: 8),
-                      Text(
+                            Text(
                               queryProvider.error!,
                               textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton(
+                              onPressed: () {
+                                queryProvider.clearResults();
+                                _queryController.clear();
+                              },
+                              child: const Text('Try Again'),
                             ),
                           ],
                         ),
@@ -404,11 +368,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Text(
                                     'Tool: ${interpretation['tool']}',
                                     style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 16),
                           ElevatedButton(
                             onPressed: () {
@@ -422,48 +386,104 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   }
 
-                  // Empty State
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 100,
-                            height: 100,
-                            decoration: BoxDecoration(
-                              color: colorScheme.primary.withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              FontAwesomeIcons.comments,
-                              size: 50,
-                              color: colorScheme.primary,
-                            ),
+                  // Empty State with Suggested Questions
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(height: 24),
-                          Text(
-                            'Ask a Question',
-                            style: Theme.of(context).textTheme.headlineMedium,
+                          child: Icon(
+                            FontAwesomeIcons.comments,
+                            size: 50,
+                            color: colorScheme.primary,
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Try asking:\n• "Show me all patients"\n• "List my medications"\n• "What are my lab results?"',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: const Color(0xFF7F8C8D),
-                              height: 1.6,
-                ),
-              ),
-            ],
-          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'Ask a Question',
+                          style: Theme.of(context).textTheme.headlineMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Try one of these questions:',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: const Color(0xFF7F8C8D),
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        
+                        // Suggested Questions
+                        _buildSuggestedQuestion(
+                          context,
+                          'Show me the most recent timeline',
+                          FontAwesomeIcons.clock,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSuggestedQuestion(
+                          context,
+                          'Show me my medications',
+                          FontAwesomeIcons.pills,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSuggestedQuestion(
+                          context,
+                          'Show me the recent tests',
+                          FontAwesomeIcons.vial,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSuggestedQuestion(
+                          context,
+                          'Show me the latest diagnostic reports',
+                          FontAwesomeIcons.fileLines,
+                        ),
+                      ],
                     ),
                   );
                 },
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuggestedQuestion(
+    BuildContext context,
+    String question,
+    IconData icon,
+  ) {
+    return Card(
+      child: InkWell(
+        onTap: () => _handleSuggestedQuestion(question),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Icon(icon, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  question,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: Colors.grey[400],
+              ),
+            ],
+          ),
         ),
       ),
     );

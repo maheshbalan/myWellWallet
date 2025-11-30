@@ -127,7 +127,8 @@ class MCPClient {
               if (data['id'] == requestId) {
                 _pendingRequests.remove(requestId);
                 if (data['error'] != null) {
-                  completer.completeError(Exception(data['error']['message']));
+                  final errorMsg = data['error']['message'] ?? 'Unknown error';
+                  completer.completeError(Exception(errorMsg));
                 } else {
                   completer.complete(data);
                 }
@@ -149,7 +150,15 @@ class MCPClient {
         );
       } else {
         _pendingRequests.remove(requestId);
-        throw Exception('HTTP error: ${response.statusCode}');
+        // Try to parse error response
+        try {
+          final errorData = jsonDecode(response.body);
+          final errorMsg = errorData['error']?['message'] ?? 
+                         'HTTP error: ${response.statusCode}';
+          throw Exception(errorMsg);
+        } catch (e) {
+          throw Exception('HTTP error: ${response.statusCode} - ${response.body}');
+        }
       }
     } catch (e) {
       _pendingRequests.remove(requestId);

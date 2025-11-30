@@ -7,6 +7,8 @@ import 'providers/auth_provider.dart';
 import 'providers/query_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/registration_screen.dart';
+import 'screens/login_screen.dart';
+import 'screens/profile_screen.dart';
 import 'screens/patient_list_screen.dart';
 import 'screens/patient_detail_screen.dart';
 
@@ -27,10 +29,12 @@ class MyWellWalletApp extends StatelessWidget {
     // Initialize MCP connection
     mcpClient.initialize();
 
+    final authProvider = AuthProvider();
+    
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) => AuthProvider(),
+        ChangeNotifierProvider.value(
+          value: authProvider,
         ),
         ChangeNotifierProvider(
           create: (_) => PatientProvider(mcpClient: mcpClient),
@@ -184,14 +188,40 @@ class MyWellWalletApp extends StatelessWidget {
 
 final GoRouter _router = GoRouter(
   initialLocation: '/',
+  redirect: (context, state) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // If no user, go to registration
+    if (authProvider.currentUser == null && state.uri.path != '/register') {
+      return '/register';
+    }
+    
+    // If user exists but not authenticated, go to login
+    if (authProvider.currentUser != null && 
+        !authProvider.isAuthenticated && 
+        state.uri.path != '/login' && 
+        state.uri.path != '/register') {
+      return '/login';
+    }
+    
+    return null;
+  },
   routes: [
     GoRoute(
       path: '/register',
       builder: (context, state) => const RegistrationScreen(),
     ),
     GoRoute(
+      path: '/login',
+      builder: (context, state) => const LoginScreen(),
+    ),
+    GoRoute(
       path: '/',
       builder: (context, state) => const HomeScreen(),
+    ),
+    GoRoute(
+      path: '/profile',
+      builder: (context, state) => const ProfileScreen(),
     ),
     GoRoute(
       path: '/patients',

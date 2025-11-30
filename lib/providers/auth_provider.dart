@@ -30,7 +30,8 @@ class AuthProvider with ChangeNotifier {
       
       if (userJson != null) {
         _currentUser = User.fromJson(jsonDecode(userJson));
-        _isAuthenticated = true;
+        // Don't auto-authenticate - require login
+        _isAuthenticated = false;
       }
     } catch (e) {
       debugPrint('Error loading user: $e');
@@ -40,20 +41,47 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// Set authenticated state (for PIN login)
+  Future<void> setAuthenticated(bool value) async {
+    _isAuthenticated = value;
+    notifyListeners();
+  }
+
+  /// Get stored PIN
+  Future<String?> getStoredPin() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('user_pin');
+  }
+
+  /// Set PIN
+  Future<void> setPin(String pin) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_pin', pin);
+  }
+
+  /// Update user profile
+  Future<void> updateUser(String name, String email) async {
+    if (_currentUser == null) return;
+    
+    final updatedUser = _currentUser!.copyWith(
+      name: name,
+      email: email,
+    );
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user', jsonEncode(updatedUser.toJson()));
+    
+    _currentUser = updatedUser;
+    notifyListeners();
+  }
+
   /// Register a new user
   Future<bool> register(String name, String email) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      // Check if biometrics are available
-      final isDeviceSupported = await _localAuth.isDeviceSupported();
-
-      if (!isDeviceSupported) {
-        throw Exception('Biometric authentication is not supported on this device');
-      }
-
-      // Create user
+      // Create user first
       final user = User(
         id: _generateUserId(),
         name: name,
@@ -67,32 +95,70 @@ class AuthProvider with ChangeNotifier {
 
       _currentUser = user;
 
-      // Register biometric credentials (passkey)
-      final didAuthenticate = await _localAuth.authenticate(
-        localizedReason: 'Register your biometric for MyWellWallet',
-        options: const AuthenticationOptions(
-          biometricOnly: true,
-          stickyAuth: true,
-        ),
-      );
+      // Try to register biometric credentials (passkey) - make it optional
+      try {
+        final isDeviceSupported = await _localAuth.isDeviceSupported();
 
-      if (didAuthenticate) {
-        await prefs.setBool('biometric_enabled', true);
-        _isAuthenticated = true;
+        if (isDeviceSupported) {
+          final availableBiometrics = await _localAuth.getAvailableBiometrics();
+          
+          if (availableBiometrics.isNotEmpty) {
+            final didAuthenticate = await _localAuth.authenticate(
+              localizedReason: 'Register your biometric for MyWellWallet',
+              options: const AuthenticationOptions(
+                biometricOnly: true,
+                stickyAuth: true,
+              ),
+            );
+
+            if (didAuthenticate) {
+              await prefs.setBool('biometric_enabled', true);
+              // Ask for PIN as backup
+              _isAuthenticated = true;
+              _isLoading = false;
+              notifyListeners();
+              return true;
+            } else {
+              // User cancelled biometric, ask for PIN setup
+              debugPrint('User cancelled biometric registration');
+              await prefs.setBool('biometric_enabled', false);
+              _isAuthenticated = true; // Account created, will need PIN
+              _isLoading = false;
+              notifyListeners();
+              return true;
+            }
+          } else {
+            // No biometrics available, but account is created
+            debugPrint('No biometrics available on device');
+            await prefs.setBool('biometric_enabled', false);
+            _isAuthenticated = true;
+            _isLoading = false;
+            notifyListeners();
+            return true;
+          }
+        } else {
+          // Device not supported, but account is created
+          debugPrint('Biometric authentication not supported on this device');
+          await prefs.setBool('biometric_enabled', false);
+          _isAuthenticated = true;
+          _isLoading = false;
+          notifyListeners();
+          return true;
+        }
+      } catch (biometricError) {
+        // Biometric registration failed, but account is still created
+        debugPrint('Biometric registration error: $biometricError');
+        await prefs.setBool('biometric_enabled', false);
+        _isAuthenticated = true; // Allow access without biometric
         _isLoading = false;
         notifyListeners();
         return true;
-      } else {
-        // User cancelled, but account is created - they'll need to authenticate later
-        _isAuthenticated = false;
-        _isLoading = false;
-        notifyListeners();
-        return false;
       }
     } catch (e) {
+      debugPrint('Registration error: $e');
       _isLoading = false;
       notifyListeners();
-      throw Exception('Registration failed: $e');
+      rethrow;
     }
   }
 
@@ -143,6 +209,11 @@ class AuthProvider with ChangeNotifier {
     await prefs.remove('biometric_enabled');
     
     notifyListeners();
+  }
+
+  /// Get SharedPreferences instance
+  Future<SharedPreferences> getSharedPreferences() async {
+    return await SharedPreferences.getInstance();
   }
 
   String _generateUserId() {
