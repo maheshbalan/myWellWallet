@@ -184,6 +184,10 @@ class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
       appBar: AppBar(
         title: const Text('MCP SSE Connection Test'),
         backgroundColor: Colors.blue,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: Column(
         children: [

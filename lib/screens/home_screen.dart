@@ -370,7 +370,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
           ),
 
-          // Bottom Section: Prompts + Search Bar (always visible)
+          // Bottom Section: Prompts + Search Bar (always visible, no gap)
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -378,7 +378,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               if (_followUpPrompts.isNotEmpty)
                 Container(
                   constraints: const BoxConstraints(maxHeight: 150),
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   child: ListView.builder(
                     shrinkWrap: true,
                     itemCount: _followUpPrompts.length > 3
@@ -420,9 +420,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
 
-              // Search Bar (always accessible at bottom)
+              // Search Bar (immediately below prompts, no gap)
               Container(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border(top: BorderSide(color: Colors.grey.shade200)),
