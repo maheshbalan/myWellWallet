@@ -111,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _checkAuthentication() async {
     final authProvider = context.read<AuthProvider>();
-    if (authProvider.currentUser != null && !authProvider.isAuthenticated) {
+    if (authProvider.currentUser == null) {
       if (mounted) {
         context.go('/login');
       }
@@ -123,53 +123,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (status.isGranted) {
       final available = await _speech.initialize(
         onStatus: (status) {
-          if (mounted) {
+          if (status == 'done' || status == 'notListening') {
             setState(() {
-              _isListening = status == 'listening';
-              if (!_isListening) {
-                _micAnimationController.stop();
-                _micAnimationController.reset();
-              } else {
-                _micAnimationController.repeat(reverse: true);
-              }
+              _isListening = false;
             });
           }
         },
         onError: (error) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Speech error: ${error.errorMsg}')),
-            );
-          }
+          debugPrint('Speech recognition error: $error');
+          setState(() {
+            _isListening = false;
+          });
         },
       );
-      if (mounted) {
-        setState(() {
-          _speechAvailable = available;
-        });
-      }
+      setState(() {
+        _speechAvailable = available;
+      });
     }
   }
 
-  void _startListening() {
-    if (!_speechAvailable) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Speech recognition not available')),
-      );
-      return;
-    }
+  void _startListening() async {
+    if (!_speechAvailable) return;
 
-    _speech.listen(
-      onResult: (result) {
-        setState(() {
-          _queryController.text = result.recognizedWords;
-        });
-      },
-    );
     setState(() {
       _isListening = true;
     });
-    _micAnimationController.repeat(reverse: true);
+
+    await _speech.listen(
+      onResult: (result) {
+        if (result.finalResult) {
+          setState(() {
+            _queryController.text = result.recognizedWords;
+            _isListening = false;
+          });
+          _processQuery();
+        } else {
+          setState(() {
+            _queryController.text = result.recognizedWords;
+          });
+        }
+      },
+    );
   }
 
   void _stopListening() {
@@ -177,8 +171,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     setState(() {
       _isListening = false;
     });
-    _micAnimationController.stop();
-    _micAnimationController.reset();
+  }
+
+  void _toggleListening() {
+    if (_isListening) {
+      _stopListening();
+    } else {
+      _startListening();
+    }
   }
 
   Future<void> _processQuery() async {
@@ -193,9 +193,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'timestamp': DateTime.now(),
       });
       _queryController.clear();
+      _followUpPrompts = [];
     });
 
-    _gemmaService.addToHistory('user', query);
     _scrollToBottom();
 
     // Add typing indicator
@@ -206,17 +206,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'timestamp': DateTime.now(),
       });
     });
-    _scrollToBottom();
 
     try {
       final queryProvider = context.read<QueryProvider>();
-      final patientProvider = context.read<PatientProvider>();
-      
-      // Ensure patient context is set in query provider
-      if (patientProvider.foundPatient != null) {
-        queryProvider.setPatientProvider(patientProvider);
-      }
-      
       await queryProvider.processQuery(query);
 
       // Remove typing indicator
@@ -225,45 +217,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       });
 
       if (queryProvider.error != null) {
-        // Add error message
         setState(() {
           _messages.add({
             'isUser': false,
-            'message':
-                'I\'m sorry, I encountered an error: ${queryProvider.error}',
+            'message': 'Sorry, I encountered an error: ${queryProvider.error}',
             'timestamp': DateTime.now(),
           });
         });
       } else if (queryProvider.lastResult != null) {
-        // Generate conversational response
-        final response = await _gemmaService.generateResponse(
-          query,
-          queryProvider.lastResult!,
+        final result = queryProvider.lastResult!;
+        final response = _gemmaService.generateResponse(
+          result,
+          context.read<PatientProvider>().foundPatient?.displayName ?? 'Patient',
         );
 
         setState(() {
           _messages.add({
             'isUser': false,
-            'message': response,
+            'message': response['message'] as String,
             'timestamp': DateTime.now(),
           });
-
-          // Generate follow-up prompts
-          _followUpPrompts = _gemmaService.generateFollowUpPrompts(
-            query,
-            queryProvider.lastResult,
-          );
+          _followUpPrompts = response['followUps'] as List<String>;
         });
-
-        _gemmaService.addToHistory('assistant', response);
       }
     } catch (e) {
       setState(() {
         _messages.removeLast();
         _messages.add({
           'isUser': false,
-          'message':
-              'I encountered an error processing your request. Please try again.',
+          'message': 'Sorry, I encountered an error processing your request: $e',
           'timestamp': DateTime.now(),
         });
       });
@@ -293,45 +275,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _queryController.dispose();
     _scrollController.dispose();
-    _speech.stop();
     _micAnimationController.dispose();
+    _speech.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final authProvider = context.watch<AuthProvider>();
-
-    if (authProvider.currentUser == null && !authProvider.isLoading) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.go('/register');
-      });
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    if (!authProvider.isAuthenticated || authProvider.isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MyWellWallet'),
+        title: const Text(
+          'MyWellWallet',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(FontAwesomeIcons.download),
-            onPressed: () => context.go('/fetch-data'),
-            tooltip: 'Fetch Health Data',
-          ),
-          IconButton(
-            icon: const Icon(FontAwesomeIcons.flask),
-            onPressed: () => context.go('/test-sse'),
-            tooltip: 'Test SSE Connection',
-          ),
           IconButton(
             icon: const Icon(FontAwesomeIcons.user),
             onPressed: () => context.go('/profile'),
             tooltip: 'Profile',
+          ),
+          IconButton(
+            icon: const Icon(FontAwesomeIcons.flask),
+            onPressed: () => context.go('/test-sse'),
+            tooltip: 'Test Connection',
+          ),
+          IconButton(
+            icon: const Icon(FontAwesomeIcons.download),
+            onPressed: () => context.go('/fetch-data'),
+            tooltip: 'Fetch Data',
           ),
           IconButton(
             icon: const Icon(FontAwesomeIcons.rightFromBracket),
@@ -346,226 +319,326 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       ),
       body: SafeArea(
-        bottom: true,
         child: Column(
           children: [
-            // Conversation Area (scrollable, like ChatGPT/Claude)
+            // Prominent Search Bar Section (at top, large and friendly)
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                border: Border(
+                  bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Welcome text (larger, friendly)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text(
+                      'How can I help you today?',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  
+                  // Large Search Bar
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: _isListening 
+                                  ? Colors.red 
+                                  : colorScheme.primary.withOpacity(0.3),
+                              width: 2,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              const SizedBox(width: 20),
+                              Expanded(
+                                child: TextField(
+                                  controller: _queryController,
+                                  style: const TextStyle(fontSize: 18),
+                                  decoration: InputDecoration(
+                                    hintText: _isListening
+                                        ? 'Listening...'
+                                        : 'Ask me anything about your health...',
+                                    hintStyle: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                    border: InputBorder.none,
+                                  ),
+                                  maxLines: 1,
+                                  textCapitalization: TextCapitalization.sentences,
+                                  onSubmitted: (_) => _processQuery(),
+                                  enabled: !_isListening,
+                                ),
+                              ),
+                              // Microphone button (large, prominent)
+                              Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: _isListening
+                                      ? Colors.red
+                                      : colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: IconButton(
+                                  icon: Icon(
+                                    _isListening
+                                        ? FontAwesomeIcons.circleStop
+                                        : FontAwesomeIcons.microphone,
+                                    color: Colors.white,
+                                    size: 22,
+                                  ),
+                                  onPressed: _speechAvailable
+                                      ? _toggleListening
+                                      : null,
+                                  tooltip: _isListening
+                                      ? 'Stop Recording'
+                                      : 'Start Voice Input',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Send Button (large, prominent)
+                      Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: colorScheme.primary.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          icon: const Icon(
+                            FontAwesomeIcons.paperPlane,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                          onPressed: _processQuery,
+                          tooltip: 'Send',
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  // Recording indicator (if listening)
+                  if (_isListening)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                          horizontal: 16,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.red, width: 2),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedBuilder(
+                              animation: _micAnimation,
+                              builder: (context, child) {
+                                return Transform.scale(
+                                  scale: _micAnimation.value,
+                                  child: const Icon(
+                                    FontAwesomeIcons.microphone,
+                                    color: Colors.red,
+                                    size: 20,
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Recording... Tap microphone to stop',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // Suggested Questions (prominent, larger, friendly)
+            if (_followUpPrompts.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withOpacity(0.2),
+                  border: Border(
+                    bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Suggested Questions:',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ..._followUpPrompts.take(3).map((prompt) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _handleFollowUpPrompt(prompt),
+                            icon: const Icon(
+                              FontAwesomeIcons.lightbulb,
+                              size: 18,
+                            ),
+                            label: Text(
+                              prompt,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              textAlign: TextAlign.left,
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 16,
+                              ),
+                              alignment: Alignment.centerLeft,
+                              backgroundColor: Colors.white,
+                              foregroundColor: colorScheme.primary,
+                              elevation: 1,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(
+                                  color: colorScheme.primary.withOpacity(0.3),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+
+            // Conversation Area (scrollable)
             Expanded(
               child: _messages.length <= 1
-                  ? SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                      child: ConversationMessage(
-                        isUser: false,
-                        message: _messages.isNotEmpty
-                            ? _messages[0]['message'] as String
-                            : 'Hello! I\'m your MyWellWallet assistant. How can I help you with your health records today?',
-                        timestamp: DateTime.now(),
+                  ? Center(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(24),
+                        child: ConversationMessage(
+                          isUser: false,
+                          message: _messages.isNotEmpty
+                              ? _messages[0]['message'] as String
+                              : 'Hello! I\'m your MyWellWallet assistant. How can I help you with your health records today?',
+                          timestamp: DateTime.now(),
+                        ),
                       ),
                     )
                   : ListView.builder(
                       controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 16,
+                        horizontal: 20,
+                      ),
                       itemCount: _messages.length,
                       itemBuilder: (context, index) {
                         final message = _messages[index];
                         if (message['message'] == 'typing') {
                           return const TypingIndicator();
                         }
-                        return ConversationMessage(
-                          isUser: message['isUser'] as bool,
-                          message: message['message'] as String,
-                          timestamp: message['timestamp'] as DateTime,
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: ConversationMessage(
+                            isUser: message['isUser'] as bool,
+                            message: message['message'] as String,
+                            timestamp: message['timestamp'] as DateTime,
+                          ),
                         );
                       },
                     ),
             ),
-
-            // Bottom Section: Prompts + Search Bar (always visible, fixed at bottom)
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Colors.grey.shade200)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Follow-up Prompts (stacked vertically, max 3)
-                  if (_followUpPrompts.isNotEmpty)
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 120),
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: _followUpPrompts.length > 3
-                            ? 3
-                            : _followUpPrompts.length,
-                        itemBuilder: (context, index) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Card(
-                              child: InkWell(
-                                onTap: () =>
-                                    _handleFollowUpPrompt(_followUpPrompts[index]),
-                                borderRadius: BorderRadius.circular(12),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(10.0),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        FontAwesomeIcons.lightbulb,
-                                        size: 14,
-                                        color: colorScheme.primary,
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Text(
-                                          _followUpPrompts[index],
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                  // Recording Indicator
-                  if (_isListening)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 6,
-                        horizontal: 16,
-                      ),
-                      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.red, width: 2),
-                      ),
-                      child: Row(
-                        children: [
-                          AnimatedBuilder(
-                            animation: _micAnimation,
-                            builder: (context, child) {
-                              return Transform.scale(
-                                scale: _micAnimation.value,
-                                child: Icon(
-                                  FontAwesomeIcons.microphone,
-                                  color: Colors.red,
-                                  size: 18,
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Recording... Tap to stop',
-                              style: TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              FontAwesomeIcons.circleStop,
-                              color: Colors.red,
-                              size: 18,
-                            ),
-                            onPressed: _stopListening,
-                            tooltip: 'Stop Recording',
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  // Search Bar (immediately below prompts, no gap)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _queryController,
-                            decoration: InputDecoration(
-                              hintText: _isListening
-                                  ? 'Listening...'
-                                  : 'Type your question or tap the mic...',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              suffixIcon: _isListening
-                                  ? IconButton(
-                                      icon: const Icon(
-                                        FontAwesomeIcons.circleStop,
-                                        color: Colors.red,
-                                        size: 20,
-                                      ),
-                                      onPressed: _stopListening,
-                                      tooltip: 'Stop Recording',
-                                    )
-                                  : IconButton(
-                                      icon: Icon(
-                                        FontAwesomeIcons.microphone,
-                                        color: _speechAvailable
-                                            ? colorScheme.primary
-                                            : Colors.grey,
-                                        size: 20,
-                                      ),
-                                      onPressed: _speechAvailable
-                                          ? _startListening
-                                          : null,
-                                      tooltip: 'Start Voice Input',
-                                    ),
-                            ),
-                            maxLines: 1,
-                            textCapitalization: TextCapitalization.sentences,
-                            onSubmitted: (_) => _processQuery(),
-                            enabled: !_isListening,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Send Button
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: const Icon(
-                              FontAwesomeIcons.paperPlane,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                            onPressed: _processQuery,
-                            tooltip: 'Send',
-                            padding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class TypingIndicator extends StatelessWidget {
+  const TypingIndicator({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              FontAwesomeIcons.heartPulse,
+              color: Colors.blue,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            'Working...',
+            style: TextStyle(
+              fontSize: 16,
+              fontStyle: FontStyle.italic,
+              color: Colors.grey,
+            ),
+          ),
+        ],
       ),
     );
   }

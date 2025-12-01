@@ -25,7 +25,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -71,16 +71,44 @@ class DatabaseService {
       )
     ''');
 
+    // Fetch summaries table
+    await db.execute('''
+      CREATE TABLE fetch_summaries (
+        id TEXT PRIMARY KEY,
+        patient_id TEXT NOT NULL,
+        total_resources INTEGER NOT NULL,
+        resource_counts TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        errors TEXT,
+        stored_in_database INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
     // Indexes for faster queries
     await db.execute('CREATE INDEX idx_fhir_patients_patient_id ON fhir_patients(patient_id)');
     await db.execute('CREATE INDEX idx_fhir_resources_patient_id ON fhir_resources(patient_id)');
     await db.execute('CREATE INDEX idx_fhir_resources_type ON fhir_resources(resource_type)');
+    await db.execute('CREATE INDEX idx_fetch_summaries_patient_id ON fetch_summaries(patient_id)');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     // Handle database migrations here
-    if (oldVersion < 1) {
-      // Future migrations
+    if (oldVersion < 2) {
+      // Add fetch_summaries table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS fetch_summaries (
+          id TEXT PRIMARY KEY,
+          patient_id TEXT NOT NULL,
+          total_resources INTEGER NOT NULL,
+          resource_counts TEXT NOT NULL,
+          completed_at TEXT NOT NULL,
+          errors TEXT,
+          stored_in_database INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_fetch_summaries_patient_id ON fetch_summaries(patient_id)');
     }
   }
 
@@ -295,6 +323,53 @@ class DatabaseService {
   /// Truncate all FHIR data for a patient (clear before fresh fetch)
   Future<void> truncatePatientFHIRData(String patientId) async {
     await deletePatientBundle(patientId);
+  }
+
+  /// Save fetch summary
+  Future<void> saveFetchSummary(String patientId, FetchSummary summary) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final id = '${patientId}_${summary.completedAt.toIso8601String()}';
+    
+    await db.insert(
+      'fetch_summaries',
+      {
+        'id': id,
+        'patient_id': patientId,
+        'total_resources': summary.totalResources,
+        'resource_counts': jsonEncode(summary.resourceCounts),
+        'completed_at': summary.completedAt.toIso8601String(),
+        'errors': summary.errors.isEmpty ? null : jsonEncode(summary.errors),
+        'stored_in_database': summary.storedInDatabase ? 1 : 0,
+        'created_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Get latest fetch summary for a patient
+  Future<FetchSummary?> getLatestFetchSummary(String patientId) async {
+    final db = await database;
+    final results = await db.query(
+      'fetch_summaries',
+      where: 'patient_id = ?',
+      whereArgs: [patientId],
+      orderBy: 'completed_at DESC',
+      limit: 1,
+    );
+    
+    if (results.isEmpty) return null;
+    
+    final row = results.first;
+    return FetchSummary(
+      resourceCounts: Map<String, int>.from(jsonDecode(row['resource_counts'] as String)),
+      totalResources: row['total_resources'] as int,
+      completedAt: DateTime.parse(row['completed_at'] as String),
+      errors: row['errors'] != null 
+          ? List<String>.from(jsonDecode(row['errors'] as String))
+          : [],
+      storedInDatabase: (row['stored_in_database'] as int) == 1,
+    );
   }
 
   /// Get count of resources by type for a patient

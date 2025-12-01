@@ -28,6 +28,47 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
   void initState() {
     super.initState();
     _initializeStatuses();
+    _loadLastFetchSummary();
+  }
+
+  Future<void> _loadLastFetchSummary() async {
+    final authProvider = context.read<AuthProvider>();
+    final patientProvider = context.read<PatientProvider>();
+    final user = authProvider.currentUser;
+    
+    if (user == null) return;
+    
+    // Try to find patient
+    if (patientProvider.foundPatient == null) {
+      try {
+        if (user.dateOfBirth != null) {
+          await patientProvider.searchPatientByNameAndDOB(
+            user.name,
+            user.dateOfBirth!,
+          );
+        } else {
+          await patientProvider.searchPatientByName(user.name);
+        }
+      } catch (e) {
+        debugPrint('Could not find patient for fetch summary: $e');
+        return;
+      }
+    }
+    
+    final patient = patientProvider.foundPatient;
+    if (patient?.id == null) return;
+    
+    try {
+      final databaseService = DatabaseService();
+      final summary = await databaseService.getLatestFetchSummary(patient!.id!);
+      if (summary != null && mounted) {
+        setState(() {
+          _summary = summary;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading fetch summary: $e');
+    }
   }
 
   void _initializeStatuses() {
@@ -131,6 +172,14 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
 
       // Fetch all data
       final summary = await _dataSyncService!.fetchAllData(patient.id!);
+
+      // Save summary to database
+      try {
+        final databaseService = DatabaseService();
+        await databaseService.saveFetchSummary(patient.id!, summary);
+      } catch (e) {
+        debugPrint('Error saving fetch summary: $e');
+      }
 
       if (mounted) {
         setState(() {
