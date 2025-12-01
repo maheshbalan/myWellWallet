@@ -24,7 +24,9 @@ class NLPService {
   /// - 'tool': The FHIR MCP tool name to call
   /// - 'params': Parameters for the tool
   /// - 'intent': The detected intent (patient, observation, medication, etc.)
-  Future<Map<String, dynamic>> interpretQuery(String query) async {
+  /// 
+  /// [patientId] - Optional patient ID to include in resource queries
+  Future<Map<String, dynamic>> interpretQuery(String query, {String? patientId}) async {
     final lowerQuery = query.toLowerCase().trim();
 
     // Patient-related queries
@@ -60,14 +62,38 @@ class NLPService {
       };
     }
 
+    // Helper to build path with patient filter
+    String buildPath(String resource, {String? sort, int? count}) {
+      String path = '/$resource';
+      final params = <String>[];
+      
+      if (patientId != null) {
+        params.add('subject=Patient/$patientId');
+      }
+      
+      if (sort != null) {
+        params.add('_sort=$sort');
+      }
+      
+      if (count != null) {
+        params.add('_count=$count');
+      }
+      
+      if (params.isNotEmpty) {
+        path += '?${params.join('&')}';
+      }
+      
+      return path;
+    }
+
     // Observations/Lab results
-    if (_matches(lowerQuery, ['observation', 'observations', 'lab', 'lab results', 'test results', 'vitals', 'vital signs', 'blood test', 'lab test'])) {
+    if (_matches(lowerQuery, ['observation', 'observations', 'lab', 'lab results', 'test results', 'vitals', 'vital signs', 'blood test', 'lab test', 'recent tests'])) {
       return {
         'tool': 'request_observation_resource',
         'params': {
           'request': {
             'method': 'GET',
-            'path': '/Observation',
+            'path': buildPath('Observation', sort: '-date', count: 10),
             'body': null,
           }
         },
@@ -82,7 +108,7 @@ class NLPService {
         'params': {
           'request': {
             'method': 'GET',
-            'path': '/Medication',
+            'path': buildPath('MedicationStatement', sort: '-date', count: 10),
             'body': null,
           }
         },
@@ -97,7 +123,7 @@ class NLPService {
         'params': {
           'request': {
             'method': 'GET',
-            'path': '/Condition',
+            'path': buildPath('Condition', sort: '-onset-date', count: 10),
             'body': null,
           }
         },
@@ -112,7 +138,7 @@ class NLPService {
         'params': {
           'request': {
             'method': 'GET',
-            'path': '/Immunization',
+            'path': buildPath('Immunization', sort: '-date', count: 10),
             'body': null,
           }
         },
@@ -120,14 +146,14 @@ class NLPService {
       };
     }
 
-    // Encounters/Visits
-    if (_matches(lowerQuery, ['encounter', 'encounters', 'visit', 'visits', 'appointment', 'appointments', 'doctor visit', 'hospital visit'])) {
+    // Encounters/Visits/Timeline
+    if (_matches(lowerQuery, ['encounter', 'encounters', 'visit', 'visits', 'appointment', 'appointments', 'doctor visit', 'hospital visit', 'timeline', 'recent timeline', 'most recent timeline', 'history'])) {
       return {
         'tool': 'request_encounter_resource',
         'params': {
           'request': {
             'method': 'GET',
-            'path': '/Encounter',
+            'path': buildPath('Encounter', sort: '-date', count: 20),
             'body': null,
           }
         },
@@ -142,7 +168,7 @@ class NLPService {
         'params': {
           'request': {
             'method': 'GET',
-            'path': '/AllergyIntolerance',
+            'path': buildPath('AllergyIntolerance'),
             'body': null,
           }
         },
