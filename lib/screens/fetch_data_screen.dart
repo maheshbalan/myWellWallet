@@ -298,7 +298,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                       }),
                       if (_summary!.errors.isNotEmpty) ...[
                         const SizedBox(height: 16),
-                        Text(
+                        const Text(
                           'Errors:',
                           style: TextStyle(
                             color: Colors.red,
@@ -366,7 +366,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
               const SizedBox(height: 8),
               Text(
                 status.errorMessage!,
-                style: TextStyle(color: Colors.red, fontSize: 12),
+                style: const TextStyle(color: Colors.red, fontSize: 12),
               ),
             ],
           ],

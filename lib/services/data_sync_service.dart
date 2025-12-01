@@ -209,7 +209,7 @@ class DataSyncService {
         }
       } else if (resultData is Map && resultData.containsKey('resourceType')) {
         // Single resource (not a Bundle)
-        resources = [resultData];
+        resources = [resultData as Map<String, dynamic>];
       }
 
       // Save resources to database
