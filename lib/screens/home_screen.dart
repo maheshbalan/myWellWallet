@@ -226,18 +226,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       } else if (queryProvider.lastResult != null) {
         final result = queryProvider.lastResult!;
-        final response = _gemmaService.generateResponse(
+        final response = await _gemmaService.generateResponse(
+          query,
           result,
-          context.read<PatientProvider>().foundPatient?.displayName ?? 'Patient',
         );
 
         setState(() {
           _messages.add({
             'isUser': false,
-            'message': response['message'] as String,
+            'message': response,
             'timestamp': DateTime.now(),
           });
-          _followUpPrompts = response['followUps'] as List<String>;
+          // Generate follow-up prompts based on query
+          if (query.toLowerCase().contains('medication')) {
+            _followUpPrompts = ['Show me my allergies', 'What are my current conditions?'];
+          } else if (query.toLowerCase().contains('test') || query.toLowerCase().contains('diagnostic')) {
+            _followUpPrompts = ['Show me my medications', 'Show me the most recent timeline'];
+          } else {
+            _followUpPrompts = [
+              'Show me my medications',
+              'Show me the recent tests',
+              'Show me the latest diagnostic reports',
+            ];
+          }
         });
       }
     } catch (e) {

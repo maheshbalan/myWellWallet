@@ -430,6 +430,90 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
     );
   }
 
+  Widget _buildStepCard(FetchStepStatus step, ColorScheme colorScheme) {
+    IconData icon;
+    Color iconColor;
+    
+    switch (step.status) {
+      case 'completed':
+        icon = FontAwesomeIcons.circleCheck;
+        iconColor = Colors.green;
+        break;
+      case 'in_progress':
+        icon = FontAwesomeIcons.circleNotch;
+        iconColor = Colors.blue;
+        break;
+      case 'error':
+        icon = FontAwesomeIcons.circleExclamation;
+        iconColor = Colors.red;
+        break;
+      default:
+        icon = FontAwesomeIcons.circle;
+        iconColor = Colors.grey;
+    }
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (step.status == 'in_progress')
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+                ),
+              )
+            else
+              Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    step.stepName,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (step.message != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      step.message!,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                  if (step.dataSnippet != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        step.dataSnippet!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildProgressCard(FetchStatus status, ColorScheme colorScheme) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
