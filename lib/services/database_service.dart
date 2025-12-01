@@ -3,6 +3,7 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 import '../models/user.dart';
+import '../models/fetch_status.dart';
 
 /// Database service for local persistence
 /// Stores user profiles and FHIR patient bundles
