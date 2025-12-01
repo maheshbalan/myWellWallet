@@ -13,7 +13,7 @@ class MCPSSETestScreen extends StatefulWidget {
 
 class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
   final MCPClientSSE _client = MCPClientSSE(
-    baseUrl: 'https://mcp-fhir-server-maheshbalan1.replit.app',
+    baseUrl: 'https://mcp-fhir-server.com',
   );
   
   bool _isInitialized = false;

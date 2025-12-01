@@ -24,7 +24,7 @@ class MyWellWalletApp extends StatelessWidget {
   Widget build(BuildContext context) {
     // Initialize MCP Client
     final mcpClient = MCPClient(
-      baseUrl: 'https://mcp-fhir-server-maheshbalan1.replit.app',
+      baseUrl: 'https://mcp-fhir-server.com',
     );
 
     // Initialize MCP connection
