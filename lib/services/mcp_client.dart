@@ -13,6 +13,8 @@ class MCPClient {
 
   MCPClient({required this.baseUrl});
 
+  bool get isInitialized => _initialized;
+
   /// Initialize MCP session
   Future<void> initialize() async {
     if (_initialized) return;

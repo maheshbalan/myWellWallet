@@ -88,9 +88,14 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
     });
 
     try {
-      // Initialize data sync service
-      final mcpClient = MCPClient(baseUrl: 'https://mcp-fhir-server.com');
-      await mcpClient.initialize();
+      // Initialize data sync service - reuse MCPClient from provider
+      final patientProvider = context.read<PatientProvider>();
+      final mcpClient = patientProvider.mcpClient;
+      
+      // Ensure MCP client is initialized
+      if (!mcpClient.isInitialized) {
+        await mcpClient.initialize();
+      }
       
       final databaseService = DatabaseService();
       _dataSyncService = DataSyncService(
