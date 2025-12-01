@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:sqflite/sqflite.dart';
 import '../services/mcp_client.dart';
 import '../services/database_service.dart';
 import '../models/fetch_status.dart';
