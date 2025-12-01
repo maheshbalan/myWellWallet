@@ -37,12 +37,29 @@ class FetchSummary {
   final int totalResources;
   final DateTime completedAt;
   final List<String> errors;
+  final bool storedInDatabase;
 
   FetchSummary({
     required this.resourceCounts,
     required this.totalResources,
     required this.completedAt,
     this.errors = const [],
+    this.storedInDatabase = true,
+  });
+}
+
+/// Overall step status for fetch process
+class FetchStepStatus {
+  final String stepName;
+  final String status; // 'pending', 'in_progress', 'completed', 'error'
+  final String? message;
+  final String? dataSnippet;
+
+  FetchStepStatus({
+    required this.stepName,
+    required this.status,
+    this.message,
+    this.dataSnippet,
   });
 }
 

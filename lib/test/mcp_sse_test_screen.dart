@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/mcp_client_sse.dart';
 import '../models/patient.dart';
 
@@ -16,140 +17,64 @@ class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
     baseUrl: 'https://mcp-fhir-server.com',
   );
   
-  bool _isInitialized = false;
-  bool _isLoading = false;
-  String _status = 'Not initialized';
-  final List<String> _logs = [];
-  List<Patient> _patients = [];
+  bool _isRunning = false;
+  final List<TestStep> _steps = [
+    TestStep(
+      name: '1. Initialize Connection',
+      status: 'pending',
+    ),
+    TestStep(
+      name: '2. List Available Tools',
+      status: 'pending',
+    ),
+    TestStep(
+      name: '3. Test Tool Call',
+      status: 'pending',
+    ),
+    TestStep(
+      name: '4. Search Patient',
+      status: 'pending',
+    ),
+  ];
 
   @override
-  void initState() {
-    super.initState();
-    _addLog('Test screen initialized');
+  void dispose() {
+    _client.dispose();
+    super.dispose();
   }
 
-  void _addLog(String message) {
+  Future<void> _runConnectTest() async {
+    if (_isRunning) return;
+    
     setState(() {
-      _logs.add('${DateTime.now().toString().substring(11, 19)}: $message');
-      if (_logs.length > 50) {
-        _logs.removeAt(0);
+      _isRunning = true;
+      // Reset all steps
+      for (var step in _steps) {
+        step.status = 'pending';
+        step.message = null;
+        step.dataSnippet = null;
       }
     });
-    debugPrint(message);
-  }
-
-  Future<void> _initialize() async {
-    setState(() {
-      _isLoading = true;
-      _status = 'Initializing...';
-    });
-    _addLog('Starting initialization...');
 
     try {
+      // Step 1: Initialize
+      _updateStep(0, 'in_progress', 'Connecting to MCP server...');
       await _client.initialize();
-      setState(() {
-        _isInitialized = true;
-        _status = 'Initialized successfully';
-        _isLoading = false;
-      });
-      _addLog('✓ Initialized successfully');
-    } catch (e) {
-      setState(() {
-        _isInitialized = false;
-        _status = 'Initialization failed: $e';
-        _isLoading = false;
-      });
-      _addLog('✗ Initialization failed: $e');
-    }
-  }
+      final sessionId = _client.sessionId;
+      _updateStep(0, 'completed', 'Connection established successfully', 
+          dataSnippet: sessionId != null 
+              ? 'Session ID: ${sessionId.substring(0, 20)}...' 
+              : 'Connected to: ${_client.baseUrl}');
 
-  Future<void> _listTools() async {
-    if (!_isInitialized) {
-      _addLog('Please initialize first');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _status = 'Listing tools...';
-    });
-    _addLog('Listing tools...');
-
-    try {
+      // Step 2: List Tools
+      _updateStep(1, 'in_progress', 'Fetching available tools...');
       final tools = await _client.listTools();
-      setState(() {
-        _status = 'Found ${tools.length} tools';
-        _isLoading = false;
-      });
-      _addLog('✓ Found ${tools.length} tools');
-      for (var tool in tools) {
-        _addLog('  - ${tool['name']}');
-      }
-    } catch (e) {
-      setState(() {
-        _status = 'Failed to list tools: $e';
-        _isLoading = false;
-      });
-      _addLog('✗ Failed to list tools: $e');
-    }
-  }
+      final toolNames = tools.take(5).map((t) => t['name'] as String).join(', ');
+      _updateStep(1, 'completed', 'Found ${tools.length} tools', 
+          dataSnippet: toolNames + (tools.length > 5 ? '...' : ''));
 
-  Future<void> _searchPatient() async {
-    if (!_isInitialized) {
-      _addLog('Please initialize first');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _status = 'Searching for patient...';
-    });
-    _addLog('Searching for patient: Ruben688 Waters156, DOB: 1972-08-02');
-
-    try {
-      final patients = await _client.searchPatients(
-        name: 'Ruben688 Waters156',
-        birthdate: '1972-08-02',
-      );
-      
-      setState(() {
-        _patients = patients;
-        _status = patients.isEmpty 
-            ? 'No patients found' 
-            : 'Found ${patients.length} patient(s)';
-        _isLoading = false;
-      });
-      
-      if (patients.isEmpty) {
-        _addLog('✗ No patients found');
-      } else {
-        _addLog('✓ Found ${patients.length} patient(s)');
-        for (var patient in patients) {
-          _addLog('  - ${patient.displayName} (ID: ${patient.id})');
-        }
-      }
-    } catch (e) {
-      setState(() {
-        _status = 'Search failed: $e';
-        _isLoading = false;
-      });
-      _addLog('✗ Search failed: $e');
-    }
-  }
-
-  Future<void> _testToolCall() async {
-    if (!_isInitialized) {
-      _addLog('Please initialize first');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _status = 'Testing tool call...';
-    });
-    _addLog('Testing tool call: request_patient_resource');
-
-    try {
+      // Step 3: Test Tool Call
+      _updateStep(2, 'in_progress', 'Testing patient resource request...');
       final result = await _client.callTool('request_patient_resource', {
         'request': {
           'method': 'GET',
@@ -157,193 +82,182 @@ class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
           'body': null,
         }
       });
+      final resultStr = result.toString();
+      final snippet = resultStr.length > 100 
+          ? resultStr.substring(0, 100) + '...' 
+          : resultStr;
+      _updateStep(2, 'completed', 'Tool call successful', dataSnippet: snippet);
+
+      // Step 4: Search Patient
+      _updateStep(3, 'in_progress', 'Searching for patient...');
+      final patients = await _client.searchPatients(
+        name: 'Ruben688 Waters156',
+        birthdate: '1972-08-02',
+      );
       
-      setState(() {
-        _status = 'Tool call successful';
-        _isLoading = false;
-      });
-      _addLog('✓ Tool call successful');
-      _addLog('Result: ${result.toString().substring(0, result.toString().length > 200 ? 200 : result.toString().length)}...');
+      if (patients.isEmpty) {
+        _updateStep(3, 'error', 'No patients found');
+      } else {
+        final patient = patients.first;
+        _updateStep(3, 'completed', 'Found ${patients.length} patient(s)', 
+            dataSnippet: 'Name: ${patient.displayName}, ID: ${patient.id}');
+      }
     } catch (e) {
+      // Find first pending or in_progress step and mark as error
+      for (var i = 0; i < _steps.length; i++) {
+        if (_steps[i].status == 'in_progress' || _steps[i].status == 'pending') {
+          _updateStep(i, 'error', 'Error: ${e.toString()}');
+          break;
+        }
+      }
+    } finally {
       setState(() {
-        _status = 'Tool call failed: $e';
-        _isLoading = false;
+        _isRunning = false;
       });
-      _addLog('✗ Tool call failed: $e');
     }
   }
 
-  @override
-  void dispose() {
-    // Cancel any ongoing operations before disposing
-    _isLoading = false;
-    _client.dispose();
-    super.dispose();
+  void _updateStep(int index, String status, String message, {String? dataSnippet}) {
+    setState(() {
+      _steps[index].status = status;
+      _steps[index].message = message;
+      _steps[index].dataSnippet = dataSnippet;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('MCP SSE Connection Test'),
-        backgroundColor: Colors.blue,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            // Always go back to home instead of pop to avoid navigation stack issues
-            context.go('/');
-          },
+          onPressed: () => context.go('/'),
         ),
       ),
-      body: Column(
-        children: [
-          // Status Card
-          Card(
-            margin: const EdgeInsets.all(16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Connect Test Button
+            ElevatedButton.icon(
+              onPressed: _isRunning ? null : _runConnectTest,
+              icon: Icon(_isRunning 
+                  ? FontAwesomeIcons.circleNotch 
+                  : FontAwesomeIcons.plug),
+              label: Text(_isRunning ? 'Running Test...' : 'Connect Test'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            // Steps
+            ..._steps.map((step) => _buildStepCard(step, colorScheme)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStepCard(TestStep step, ColorScheme colorScheme) {
+    IconData icon;
+    Color iconColor;
+    
+    switch (step.status) {
+      case 'completed':
+        icon = FontAwesomeIcons.circleCheck;
+        iconColor = Colors.green;
+        break;
+      case 'in_progress':
+        icon = FontAwesomeIcons.circleNotch;
+        iconColor = Colors.blue;
+        break;
+      case 'error':
+        icon = FontAwesomeIcons.circleExclamation;
+        iconColor = Colors.red;
+        break;
+      default:
+        icon = FontAwesomeIcons.circle;
+        iconColor = Colors.grey;
+    }
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (step.status == 'in_progress')
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+                ),
+              )
+            else
+              Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        _isInitialized ? Icons.check_circle : Icons.error,
-                        color: _isInitialized ? Colors.green : Colors.red,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _status,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      if (_isLoading)
-                        const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          // Test Buttons
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _initialize,
-                  child: const Text('1. Initialize'),
-                ),
-                ElevatedButton(
-                  onPressed: _isLoading || !_isInitialized ? null : _listTools,
-                  child: const Text('2. List Tools'),
-                ),
-                ElevatedButton(
-                  onPressed: _isLoading || !_isInitialized ? null : _testToolCall,
-                  child: const Text('3. Test Tool Call'),
-                ),
-                ElevatedButton(
-                  onPressed: _isLoading || !_isInitialized ? null : _searchPatient,
-                  child: const Text('4. Search Patient'),
-                ),
-              ],
-            ),
-          ),
-          
-          // Patients List
-          if (_patients.isNotEmpty)
-            Expanded(
-              flex: 1,
-              child: Card(
-                margin: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text(
-                        'Found Patients:',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                  Text(
+                    step.name,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: _patients.length,
-                        itemBuilder: (context, index) {
-                          final patient = _patients[index];
-                          return ListTile(
-                            title: Text(patient.displayName),
-                            subtitle: Text('ID: ${patient.id}'),
-                            leading: const Icon(Icons.person),
-                          );
-                        },
+                  ),
+                  if (step.message != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      step.message!,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                  if (step.dataSnippet != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        step.dataSnippet!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                        ),
                       ),
                     ),
                   ],
-                ),
-              ),
-            ),
-          
-          // Logs
-          Expanded(
-            flex: 2,
-            child: Card(
-              margin: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text(
-                      'Logs:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      reverse: true,
-                      itemCount: _logs.length,
-                      itemBuilder: (context, index) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 4,
-                          ),
-                          child: Text(
-                            _logs[_logs.length - 1 - index],
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 12,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
+class TestStep {
+  final String name;
+  String status; // 'pending', 'in_progress', 'completed', 'error'
+  String? message;
+  String? dataSnippet;
+
+  TestStep({
+    required this.name,
+    required this.status,
+    this.message,
+    this.dataSnippet,
+  });
+}

@@ -22,6 +22,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
   bool _isFetching = false;
   String? _error;
   DataSyncService? _dataSyncService;
+  final List<FetchStepStatus> _steps = [];
 
   @override
   void initState() {
@@ -84,6 +85,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
       _isFetching = true;
       _error = null;
       _summary = null;
+      _steps.clear();
       _initializeStatuses();
     });
 
@@ -108,6 +110,21 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
         if (mounted) {
           setState(() {
             _statuses[status.resourceType] = status;
+          });
+        }
+      };
+      
+      // Set up step callback
+      _dataSyncService!.onStepUpdate = (stepStatus) {
+        if (mounted) {
+          setState(() {
+            // Update or add step
+            final index = _steps.indexWhere((s) => s.stepName == stepStatus.stepName);
+            if (index >= 0) {
+              _steps[index] = stepStatus;
+            } else {
+              _steps.add(stepStatus);
+            }
           });
         }
       };
@@ -242,10 +259,21 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
 
             if (_error != null) const SizedBox(height: 24),
 
+            // Step Indicators
+            if (_steps.isNotEmpty) ...[
+              Text(
+                'Steps',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 16),
+              ..._steps.map((step) => _buildStepCard(step, colorScheme)),
+              const SizedBox(height: 24),
+            ],
+
             // Progress Section
             if (_isFetching || _summary != null) ...[
               Text(
-                'Progress',
+                'Resource Progress',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 16),
@@ -285,6 +313,26 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
+                      if (_summary!.storedInDatabase) ...[
+                        Row(
+                          children: [
+                            Icon(
+                              FontAwesomeIcons.database,
+                              color: Colors.green,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Stored in Local Database',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: Colors.green.shade700,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       Text(
                         'Total Resources: ${_summary!.totalResources}',
                         style: Theme.of(context).textTheme.titleMedium,

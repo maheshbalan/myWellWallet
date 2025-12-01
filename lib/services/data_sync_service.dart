@@ -13,6 +13,9 @@ class DataSyncService {
   // Callback for progress updates
   Function(FetchStatus)? onProgressUpdate;
   
+  // Callback for step updates
+  Function(FetchStepStatus)? onStepUpdate;
+  
   // List of FHIR resource types to fetch
   static const List<String> resourceTypes = [
     'Patient',
@@ -48,14 +51,17 @@ class DataSyncService {
     }
 
     try {
+      // Step 1: Clean database
+      _updateStep('Cleaning Database', 'in_progress', 'Removing existing FHIR data...');
       debugPrint('Step 1: Truncating FHIR tables...');
-      // Step 1: Truncate local FHIR tables
-      debugPrint('Truncating FHIR tables for patient: $patientId');
-      _updateStatus(statuses, 'Patient', 'in_progress', progress: 0.1);
       await _truncateFHIRTables(patientId);
+      _updateStep('Cleaning Database', 'completed', 'Database cleaned successfully');
       debugPrint('Truncation complete');
 
-      // Step 2: Fetch Patient resource
+      // Step 2: Fetch from FHIR MCP Gateway
+      _updateStep('Fetching from FHIR MCP Gateway', 'in_progress', 'Connecting to server...');
+      
+      // Step 2a: Fetch Patient resource
       debugPrint('Fetching Patient resource: /Patient/$patientId');
       _updateStatus(statuses, 'Patient', 'in_progress', progress: 0.2);
       final patientCount = await _fetchResource(
@@ -68,11 +74,14 @@ class DataSyncService {
       resourceCounts['Patient'] = patientCount;
       _updateStatus(statuses, 'Patient', 'completed', count: patientCount);
 
-      // Step 3: Fetch other resources in sequence
+      // Step 2b: Fetch other resources in sequence
       int stepIndex = 0;
+      final totalResources = resourceTypes.length - 1;
       for (var resourceType in resourceTypes.skip(1)) {
         stepIndex++;
-        final progress = 0.3 + (stepIndex / resourceTypes.length) * 0.7;
+        final progress = 0.3 + (stepIndex / totalResources) * 0.5;
+        _updateStep('Fetching from FHIR MCP Gateway', 'in_progress', 
+            'Fetching $resourceType... (${stepIndex}/$totalResources)');
         
         _updateStatus(statuses, resourceType, 'in_progress', progress: progress);
         
@@ -94,12 +103,27 @@ class DataSyncService {
           );
         }
       }
+      
+      _updateStep('Fetching from FHIR MCP Gateway', 'completed', 
+          'Fetched ${resourceCounts.values.fold(0, (a, b) => a + b)} total resources');
+
+      // Step 3: Store in local database
+      _updateStep('Storing in Local Database', 'in_progress', 'Saving resources to SQLite...');
+      final totalResourcesFetched = resourceCounts.values.fold(0, (a, b) => a + b);
+      final resourceCountsSummary = resourceCounts.entries
+          .where((e) => e.value > 0)
+          .map((e) => '${e.key}: ${e.value}')
+          .join(', ');
+      _updateStep('Storing in Local Database', 'completed', 
+          'Stored $totalResourcesFetched resources ($resourceCountsSummary)',
+          dataSnippet: resourceCountsSummary);
 
       return FetchSummary(
         resourceCounts: resourceCounts,
-        totalResources: resourceCounts.values.fold(0, (a, b) => a + b),
+        totalResources: totalResourcesFetched,
         completedAt: DateTime.now(),
         errors: errors,
+        storedInDatabase: true,
       );
     } catch (e, stackTrace) {
       debugPrint('Error in fetchAllData: $e');

@@ -16,6 +16,8 @@ class MCPClientSSE {
 
   MCPClientSSE({required this.baseUrl});
 
+  String? get sessionId => _sessionId;
+
   /// Initialize MCP session with persistent session management
   Future<void> initialize() async {
     if (_initialized && _sessionId != null) return;
