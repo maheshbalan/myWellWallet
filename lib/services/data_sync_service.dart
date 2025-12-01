@@ -319,5 +319,17 @@ class DataSyncService {
       }
     }
   }
+  
+  /// Update step status and notify listeners
+  void _updateStep(String stepName, String status, String message, {String? dataSnippet}) {
+    if (onStepUpdate != null) {
+      onStepUpdate!(FetchStepStatus(
+        stepName: stepName,
+        status: status,
+        message: message,
+        dataSnippet: dataSnippet,
+      ));
+    }
+  }
 }
 
