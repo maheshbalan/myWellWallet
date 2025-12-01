@@ -210,6 +210,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     try {
       final queryProvider = context.read<QueryProvider>();
+      final patientProvider = context.read<PatientProvider>();
+      
+      // Ensure patient context is set in query provider
+      if (patientProvider.foundPatient != null) {
+        queryProvider.setPatientProvider(patientProvider);
+      }
+      
       await queryProvider.processQuery(query);
 
       // Remove typing indicator

@@ -40,8 +40,13 @@ class MyWellWalletApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => PatientProvider(mcpClient: mcpClient),
         ),
-        ChangeNotifierProvider(
+        ChangeNotifierProxyProvider<PatientProvider, QueryProvider>(
           create: (_) => QueryProvider(mcpClient: mcpClient),
+          update: (_, patientProvider, previous) {
+            previous ??= QueryProvider(mcpClient: mcpClient);
+            previous.setPatientProvider(patientProvider);
+            return previous;
+          },
         ),
       ],
       child: MaterialApp.router(
