@@ -62,9 +62,11 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
         } else {
           await patientProvider.searchPatientByName(user.name);
         }
-      } catch (e) {
+      } catch (e, stackTrace) {
+        debugPrint('Error finding patient: $e');
+        debugPrint('Stack trace: $stackTrace');
         setState(() {
-          _error = 'Could not find patient: $e';
+          _error = 'Could not find patient: ${e.toString()}\n\nPlease ensure your name matches the FHIR server records.';
         });
         return;
       }
@@ -114,10 +116,12 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
           _isFetching = false;
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('Error in _fetchAllData: $e');
+      debugPrint('Stack trace: $stackTrace');
       if (mounted) {
         setState(() {
-          _error = 'Error fetching data: $e';
+          _error = 'Error fetching data: ${e.toString()}';
           _isFetching = false;
         });
       }

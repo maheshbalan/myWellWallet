@@ -34,6 +34,7 @@ class DataSyncService {
 
   /// Fetch all data for a patient
   Future<FetchSummary> fetchAllData(String patientId) async {
+    debugPrint('Starting fetchAllData for patient: $patientId');
     final statuses = <String, FetchStatus>{};
     final resourceCounts = <String, int>{};
     final errors = <String>[];
@@ -47,11 +48,15 @@ class DataSyncService {
     }
 
     try {
+      debugPrint('Step 1: Truncating FHIR tables...');
       // Step 1: Truncate local FHIR tables
+      debugPrint('Truncating FHIR tables for patient: $patientId');
       _updateStatus(statuses, 'Patient', 'in_progress', progress: 0.1);
       await _truncateFHIRTables(patientId);
+      debugPrint('Truncation complete');
 
       // Step 2: Fetch Patient resource
+      debugPrint('Fetching Patient resource: /Patient/$patientId');
       _updateStatus(statuses, 'Patient', 'in_progress', progress: 0.2);
       final patientCount = await _fetchResource(
         patientId,
@@ -59,6 +64,7 @@ class DataSyncService {
         '/Patient/$patientId',
         statuses,
       );
+      debugPrint('Patient fetch complete: $patientCount records');
       resourceCounts['Patient'] = patientCount;
       _updateStatus(statuses, 'Patient', 'completed', count: patientCount);
 
@@ -95,8 +101,9 @@ class DataSyncService {
         completedAt: DateTime.now(),
         errors: errors,
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('Error in fetchAllData: $e');
+      debugPrint('Stack trace: $stackTrace');
       rethrow;
     }
   }
