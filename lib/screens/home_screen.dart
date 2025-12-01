@@ -319,6 +319,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         title: const Text('MyWellWallet'),
         actions: [
           IconButton(
+            icon: const Icon(FontAwesomeIcons.download),
+            onPressed: () => context.go('/fetch-data'),
+            tooltip: 'Fetch Health Data',
+          ),
+          IconButton(
             icon: const Icon(FontAwesomeIcons.flask),
             onPressed: () => context.go('/test-sse'),
             tooltip: 'Test SSE Connection',

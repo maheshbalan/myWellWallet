@@ -292,6 +292,28 @@ class DatabaseService {
     await db.delete('fhir_resources', where: 'patient_id = ?', whereArgs: [patientId]);
   }
 
+  /// Truncate all FHIR data for a patient (clear before fresh fetch)
+  Future<void> truncatePatientFHIRData(String patientId) async {
+    await deletePatientBundle(patientId);
+  }
+
+  /// Get count of resources by type for a patient
+  Future<Map<String, int>> getResourceCounts(String patientId) async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT resource_type, COUNT(*) as count 
+      FROM fhir_resources 
+      WHERE patient_id = ? 
+      GROUP BY resource_type
+    ''', [patientId]);
+
+    final counts = <String, int>{};
+    for (var map in maps) {
+      counts[map['resource_type'] as String] = map['count'] as int;
+    }
+    return counts;
+  }
+
   /// Close database
   Future<void> close() async {
     final db = await database;

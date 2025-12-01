@@ -11,6 +11,7 @@ import 'screens/login_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/patient_list_screen.dart';
 import 'screens/patient_detail_screen.dart';
+import 'screens/fetch_data_screen.dart';
 import 'test/mcp_sse_test_screen.dart';
 
 void main() {
@@ -258,6 +259,12 @@ final GoRouter _router = GoRouter(
       path: '/test-sse',
       builder: (context, state) {
         return const MCPSSETestScreen();
+      },
+    ),
+    GoRoute(
+      path: '/fetch-data',
+      builder: (context, state) {
+        return const FetchDataScreen();
       },
     ),
   ],
