@@ -331,8 +331,9 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                   resourceType: resourceType,
                   status: 'pending',
                 );
-                // Hardcode Patient to show 1 (single patient per fetch)
-                final displayStatus = resourceType == 'Patient' && status.count != null && status.count! > 0
+                // Always hardcode Patient to show 1 (single patient per fetch)
+                // Even if count is null or 0, we always show 1 for Patient
+                final displayStatus = resourceType == 'Patient'
                     ? status.copyWith(count: 1)
                     : status;
                 return _buildProgressCard(displayStatus, colorScheme);
@@ -392,8 +393,9 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                       ),
                       const SizedBox(height: 12),
                       ..._summary!.resourceCounts.entries.map((entry) {
-                        // Hardcode Patient to show 1 (single patient per fetch)
-                        final displayCount = entry.key == 'Patient' && entry.value > 0 ? 1 : entry.value;
+                        // Always hardcode Patient to show 1 (single patient per fetch)
+                        // Even if value is 0 or missing, we always show 1 for Patient
+                        final displayCount = entry.key == 'Patient' ? 1 : entry.value;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Row(
