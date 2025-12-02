@@ -111,6 +111,10 @@ class DataSyncService {
 
       // Step 3: Store in local database
       _updateStep('Storing in Local Database', 'in_progress', 'Saving resources to SQLite...');
+      // Ensure Patient shows as 1 in summary (hardcoded for single patient)
+      if (resourceCounts.containsKey('Patient') && resourceCounts['Patient']! > 0) {
+        resourceCounts['Patient'] = 1;
+      }
       final totalResourcesFetched = resourceCounts.values.fold(0, (a, b) => a + b);
       final resourceCountsSummary = resourceCounts.entries
           .where((e) => e.value > 0)

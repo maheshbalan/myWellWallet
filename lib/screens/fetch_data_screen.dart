@@ -331,7 +331,11 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                   resourceType: resourceType,
                   status: 'pending',
                 );
-                return _buildProgressCard(status, colorScheme);
+                // Hardcode Patient to show 1 (single patient per fetch)
+                final displayStatus = resourceType == 'Patient' && status.count != null && status.count! > 0
+                    ? status.copyWith(count: 1)
+                    : status;
+                return _buildProgressCard(displayStatus, colorScheme);
               }),
               const SizedBox(height: 24),
             ],
@@ -388,6 +392,8 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                       ),
                       const SizedBox(height: 12),
                       ..._summary!.resourceCounts.entries.map((entry) {
+                        // Hardcode Patient to show 1 (single patient per fetch)
+                        final displayCount = entry.key == 'Patient' && entry.value > 0 ? 1 : entry.value;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Row(
@@ -395,7 +401,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                             children: [
                               Text(entry.key),
                               Text(
-                                '${entry.value}',
+                                '$displayCount',
                                 style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
                             ],

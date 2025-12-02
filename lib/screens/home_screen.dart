@@ -237,15 +237,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             'timestamp': DateTime.now(),
           });
           // Generate follow-up prompts based on query
-          if (query.toLowerCase().contains('medication')) {
-            _followUpPrompts = ['Show me my allergies', 'What are my current conditions?'];
-          } else if (query.toLowerCase().contains('test') || query.toLowerCase().contains('diagnostic')) {
-            _followUpPrompts = ['Show me my medications', 'Show me the most recent timeline'];
+          if (query.toLowerCase().contains('visit') || query.toLowerCase().contains('encounter')) {
+            _followUpPrompts = ['Show me my immunization record', 'Show me my Test Results'];
+          } else if (query.toLowerCase().contains('immunization') || query.toLowerCase().contains('vaccine')) {
+            _followUpPrompts = ['Show me my recent visits', 'Show me my Test Results'];
+          } else if (query.toLowerCase().contains('test') || query.toLowerCase().contains('result') || query.toLowerCase().contains('diagnostic')) {
+            _followUpPrompts = ['Show me my recent visits', 'Show me my immunization record'];
           } else {
             _followUpPrompts = [
-              'Show me my medications',
-              'Show me the recent tests',
-              'Show me the latest diagnostic reports',
+              'Show me my recent visits',
+              'Show me my immunization record',
+              'Show me my Test Results',
             ];
           }
         });
