@@ -651,7 +651,7 @@ class TypingIndicator extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: const Icon(
-              FontAwesomeIcons.heartPulse,
+              Icons.favorite_outline,
               color: Colors.blue,
               size: 20,
             ),
