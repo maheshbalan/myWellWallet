@@ -249,7 +249,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                 child: Column(
                   children: [
                     Icon(
-                      FontAwesomeIcons.download,
+                      Icons.cloud_download_outlined,
                       size: 48,
                       color: colorScheme.primary,
                     ),
@@ -275,8 +275,8 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
             ElevatedButton.icon(
               onPressed: _isFetching ? null : _fetchAllData,
               icon: Icon(_isFetching 
-                  ? FontAwesomeIcons.circleNotch 
-                  : FontAwesomeIcons.download),
+                  ? Icons.hourglass_empty_outlined 
+                  : Icons.cloud_download_outlined),
               label: Text(_isFetching ? 'Fetching Data...' : 'Fetch All Data'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 18),

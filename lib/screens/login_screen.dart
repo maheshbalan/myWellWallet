@@ -117,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-              // App Icon
+              // App Icon - Clean Health UI Kit style
               Container(
                 width: 120,
                 height: 120,
@@ -126,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  FontAwesomeIcons.heartPulse,
+                  Icons.favorite_outline,
                   size: 56,
                   color: colorScheme.primary,
                 ),
@@ -170,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Enter PIN',
                     hintText: '4+ digits',
-                    prefixIcon: Icon(FontAwesomeIcons.lock),
+                    prefixIcon: const Icon(Icons.lock_outline),
                   ),
                   keyboardType: TextInputType.number,
                   obscureText: true,
@@ -199,7 +199,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Biometric Button
                 ElevatedButton.icon(
                   onPressed: _tryBiometricAuth,
-                  icon: const Icon(FontAwesomeIcons.fingerprint),
+                  icon: const Icon(Icons.fingerprint_outlined),
                   label: const Text('Login with Biometric'),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
@@ -214,7 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       _showPinInput = true;
                     });
                   },
-                  icon: const Icon(FontAwesomeIcons.lock),
+                  icon: const Icon(Icons.lock_outline),
                   label: const Text('Login with PIN'),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
@@ -233,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(FontAwesomeIcons.triangleExclamation, color: colorScheme.error),
+                      Icon(Icons.warning_amber_outlined, color: colorScheme.error),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(

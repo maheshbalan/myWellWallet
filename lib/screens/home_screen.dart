@@ -303,56 +303,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
         actions: [
-          // Profile Button (more appealing)
-          Container(
-            margin: const EdgeInsets.only(right: 4),
-            decoration: BoxDecoration(
-              color: Colors.purple.shade50,
-              borderRadius: BorderRadius.circular(8),
+          // Profile Button - Clean Health UI Kit style
+          IconButton(
+            icon: const Icon(
+              Icons.person_outline,
+              size: 24,
             ),
-            child: IconButton(
-              icon: const Icon(
-                FontAwesomeIcons.user,
-                color: Colors.purple,
-              ),
-              onPressed: () => context.go('/profile'),
-              tooltip: 'Profile',
-            ),
+            onPressed: () => context.go('/profile'),
+            tooltip: 'Profile',
           ),
-          // Test Connection Button (more appealing)
-          Container(
-            margin: const EdgeInsets.only(right: 4),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(8),
+          // Test Connection Button - Clean Health UI Kit style
+          IconButton(
+            icon: const Icon(
+              Icons.science_outlined,
+              size: 24,
             ),
-            child: IconButton(
-              icon: const Icon(
-                FontAwesomeIcons.flask,
-                color: Colors.blue,
-              ),
-              onPressed: () => context.go('/test-sse'),
-              tooltip: 'Test Connection',
-            ),
+            onPressed: () => context.go('/test-sse'),
+            tooltip: 'Test Connection',
           ),
-          // Fetch Data Button (more appealing)
-          Container(
-            margin: const EdgeInsets.only(right: 4),
-            decoration: BoxDecoration(
-              color: Colors.green.shade50,
-              borderRadius: BorderRadius.circular(8),
+          // Fetch Data Button - Clean Health UI Kit style
+          IconButton(
+            icon: const Icon(
+              Icons.cloud_download_outlined,
+              size: 24,
             ),
-            child: IconButton(
-              icon: const Icon(
-                FontAwesomeIcons.download,
-                color: Colors.green,
-              ),
-              onPressed: () => context.go('/fetch-data'),
-              tooltip: 'Fetch Data',
-            ),
+            onPressed: () => context.go('/fetch-data'),
+            tooltip: 'Fetch Data',
           ),
           IconButton(
-            icon: const Icon(FontAwesomeIcons.rightFromBracket),
+            icon: const Icon(
+              Icons.logout_outlined,
+              size: 24,
+            ),
             onPressed: () async {
               await context.read<AuthProvider>().logout();
               if (mounted) {
@@ -437,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   enabled: !_isListening,
                                 ),
                               ),
-                              // Microphone button (large, prominent)
+                              // Microphone button - Clean Health UI Kit style
                               Container(
                                 margin: const EdgeInsets.only(right: 8),
                                 width: 48,
@@ -451,10 +433,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 child: IconButton(
                                   icon: Icon(
                                     _isListening
-                                        ? FontAwesomeIcons.circleStop
-                                        : FontAwesomeIcons.microphone,
+                                        ? Icons.stop_circle_outlined
+                                        : Icons.mic_outlined,
                                     color: Colors.white,
-                                    size: 22,
+                                    size: 24,
                                   ),
                                   onPressed: _speechAvailable
                                       ? _toggleListening
@@ -486,7 +468,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                         child: IconButton(
                           icon: const Icon(
-                            FontAwesomeIcons.paperPlane,
+                            Icons.send_outlined,
                             color: Colors.white,
                             size: 24,
                           ),
