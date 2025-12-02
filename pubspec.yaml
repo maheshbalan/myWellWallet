@@ -37,6 +37,9 @@ dependencies:
   
   # Icons
   font_awesome_flutter: ^10.6.0
+  
+  # Google Fonts (for Manrope from Health UI Kit)
+  google_fonts: ^6.1.0
 
   # Authentication
   local_auth: ^2.3.0

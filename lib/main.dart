@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'services/mcp_client.dart';
 import 'providers/patient_provider.dart';
 import 'providers/auth_provider.dart';
@@ -70,55 +71,57 @@ class MyWellWalletApp extends StatelessWidget {
             onError: Colors.white,
             brightness: Brightness.light,
           ),
-          // Clean, geometric typography
-          textTheme: const TextTheme(
-            displayLarge: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.5,
-              color: Color(0xFF2C3E50),
-            ),
-            displayMedium: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w600,
-              letterSpacing: -0.5,
-              color: Color(0xFF2C3E50),
-            ),
-            headlineMedium: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0,
-              color: Color(0xFF2C3E50),
-            ),
-            titleLarge: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0,
-              color: Color(0xFF2C3E50),
-            ),
-            titleMedium: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0,
-              color: Color(0xFF2C3E50),
-            ),
-            bodyLarge: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w400,
-              letterSpacing: 0.15,
-              color: Color(0xFF34495E),
-            ),
-            bodyMedium: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              letterSpacing: 0.25,
-              color: Color(0xFF34495E),
-            ),
-            bodySmall: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w400,
-              letterSpacing: 0.4,
-              color: Color(0xFF7F8C8D),
+          // Health UI Kit typography using Manrope font
+          textTheme: GoogleFonts.manropeTextTheme(
+            TextTheme(
+              displayLarge: GoogleFonts.manrope(
+                fontSize: 32,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+                color: const Color(0xFF2C3E50),
+              ),
+              displayMedium: GoogleFonts.manrope(
+                fontSize: 28,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.5,
+                color: const Color(0xFF2C3E50),
+              ),
+              headlineMedium: GoogleFonts.manrope(
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+                color: const Color(0xFF2C3E50),
+              ),
+              titleLarge: GoogleFonts.manrope(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0,
+                color: const Color(0xFF2C3E50),
+              ),
+              titleMedium: GoogleFonts.manrope(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0,
+                color: const Color(0xFF2C3E50),
+              ),
+              bodyLarge: GoogleFonts.manrope(
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.15,
+                color: const Color(0xFF34495E),
+              ),
+              bodyMedium: GoogleFonts.manrope(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.25,
+                color: const Color(0xFF34495E),
+              ),
+              bodySmall: GoogleFonts.manrope(
+                fontSize: 12,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.4,
+                color: const Color(0xFF7F8C8D),
+              ),
             ),
           ),
           // Minimalist app bar
@@ -127,52 +130,53 @@ class MyWellWalletApp extends StatelessWidget {
             elevation: 0,
             backgroundColor: Colors.white,
             foregroundColor: const Color(0xFF2C3E50),
-            titleTextStyle: const TextStyle(
+            titleTextStyle: GoogleFonts.manrope(
               fontSize: 20,
               fontWeight: FontWeight.w600,
               letterSpacing: 0,
-              color: Color(0xFF2C3E50),
+              color: const Color(0xFF2C3E50),
             ),
             iconTheme: const IconThemeData(
               color: Color(0xFF2C3E50),
             ),
           ),
-          // Clean geometric cards
+          // Health UI Kit card style - softer, more rounded
           cardTheme: CardThemeData(
-            elevation: 0,
+            elevation: 2,
             color: Colors.white,
+            shadowColor: Colors.black.withOpacity(0.05),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20), // More rounded for health app feel
               side: BorderSide(
-                color: Colors.grey.shade200,
+                color: Colors.grey.shade100,
                 width: 1,
               ),
             ),
-            margin: EdgeInsets.zero,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
-          // Simple button styles
+          // Health UI Kit button styles - more rounded, softer
           elevatedButtonTheme: ElevatedButtonThemeData(
             style: ElevatedButton.styleFrom(
               elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16), // More rounded
               ),
               backgroundColor: const Color(0xFF4A90E2),
               foregroundColor: Colors.white,
-              textStyle: const TextStyle(
+              textStyle: GoogleFonts.manrope(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
+                letterSpacing: 0.3,
               ),
             ),
           ),
-          // Input decoration
+          // Health UI Kit input decoration - softer, more rounded
           inputDecorationTheme: InputDecorationTheme(
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16), // More rounded
               borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             enabledBorder: OutlineInputBorder(
