@@ -237,6 +237,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     keyboardType: TextInputType.emailAddress,
                   ),
+                  const SizedBox(height: 16),
+                  // Date of Birth Field
+                  InkWell(
+                    onTap: () async {
+                      final pickedDate = await showDatePicker(
+                        context: context,
+                        initialDate: _dateOfBirth ?? DateTime.now().subtract(const Duration(days: 365 * 30)),
+                        firstDate: DateTime(1900),
+                        lastDate: DateTime.now(),
+                      );
+                      if (pickedDate != null) {
+                        setState(() {
+                          _dateOfBirth = pickedDate;
+                        });
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Date of Birth',
+                        hintText: _dateOfBirth == null 
+                            ? 'Select your date of birth'
+                            : '${_dateOfBirth!.year}-${_dateOfBirth!.month.toString().padLeft(2, '0')}-${_dateOfBirth!.day.toString().padLeft(2, '0')}',
+                        prefixIcon: const Icon(FontAwesomeIcons.calendar),
+                        suffixIcon: const Icon(Icons.arrow_drop_down),
+                        border: const OutlineInputBorder(),
+                      ),
+                      child: Text(
+                        _dateOfBirth == null
+                            ? 'Select your date of birth'
+                            : '${_dateOfBirth!.year}-${_dateOfBirth!.month.toString().padLeft(2, '0')}-${_dateOfBirth!.day.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          color: _dateOfBirth == null 
+                              ? Colors.grey[600] 
+                              : Theme.of(context).textTheme.bodyLarge?.color,
+                        ),
+                      ),
+                    ),
+                  ),
                 ] else ...[
                   InfoRow(
                     label: 'Name',
@@ -245,6 +283,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   InfoRow(
                     label: 'Email',
                     value: user?.email ?? 'N/A',
+                  ),
+                  InfoRow(
+                    label: 'Date of Birth',
+                    value: user?.dateOfBirth != null
+                        ? '${user!.dateOfBirth!.year}-${user.dateOfBirth!.month.toString().padLeft(2, '0')}-${user.dateOfBirth!.day.toString().padLeft(2, '0')}'
+                        : 'Not set',
                   ),
                 ],
               ],

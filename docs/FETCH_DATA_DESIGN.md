@@ -236,30 +236,37 @@ When user asks natural language query:
 ## Implementation Steps
 
 ### Step 1: Update MCP Server URL
-- [ ] Replace `mcp-fhir-server-maheshbalan1.replit.app` with `mcp-fhir-server.com`
-- [ ] Test connection
+- [x] Replace `mcp-fhir-server-maheshbalan1.replit.app` with `mcp-fhir-server.com`
+- [x] Test connection
 
 ### Step 2: Generate SQLite Schema Documentation
-- [ ] Analyze database_service.dart
-- [ ] Document all tables and columns
-- [ ] Create `docs/SQLITE_SCHEMA.md`
+- [x] Analyze database_service.dart
+- [x] Document all tables and columns
+- [x] Create `docs/SQLITE_SCHEMA.md`
 
 ### Step 3: Create Fetch Data Screen
-- [ ] Create `fetch_data_screen.dart`
-- [ ] Add navigation to new screen
-- [ ] Implement UI with progress indicators
+- [x] Create `fetch_data_screen.dart`
+- [x] Add navigation to new screen
+- [x] Implement UI with progress indicators
+- [x] Add step indicators (Cleaning Database, Fetching from FHIR MCP Gateway, Storing in Local Database)
+- [x] Show database storage confirmation
+- [x] Persist fetch summaries to database
+- [x] Load and display last fetch summary
 
 ### Step 4: Implement Data Sync Service
-- [ ] Create `data_sync_service.dart`
-- [ ] Implement truncate functionality
-- [ ] Implement resource fetching (one type at a time)
-- [ ] Add progress callbacks
-- [ ] Handle pagination
+- [x] Create `data_sync_service.dart`
+- [x] Implement truncate functionality
+- [x] Implement resource fetching (one type at a time)
+- [x] Add progress callbacks
+- [x] Add step status callbacks
+- [x] Handle pagination (via _count=1000)
+- [x] Note: Uses name and DOB for patient matching when fetching data
 
 ### Step 5: Enhance FHIR Persistence
-- [ ] Add truncate methods
-- [ ] Add bulk insert methods
-- [ ] Optimize for large datasets
+- [x] Add truncate methods
+- [x] Add bulk insert methods
+- [x] Optimize for large datasets
+- [x] Add fetch summary persistence
 
 ### Step 6: Implement Local RAG (Basic)
 - [ ] Create `local_rag_service.dart`
@@ -281,6 +288,14 @@ When user asks natural language query:
 - [ ] Create markdown formatter
 - [ ] Format FHIR data as human-readable text
 - [ ] Add copy-to-clipboard functionality
+
+## UI/UX Improvements Completed
+
+- [x] Redesign home screen for older users (larger text, better spacing, prominent search bar)
+- [x] Improve Test and Download icon styling with colored backgrounds
+- [x] Add Date of Birth editing to profile screen
+- [x] Display DOB in profile view
+- [x] Clean up MCP SSE test screen with step indicators
 
 ## Testing Strategy
 
