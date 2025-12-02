@@ -202,13 +202,13 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
   IconData _getStatusIcon(String status) {
     switch (status) {
       case 'completed':
-        return FontAwesomeIcons.circleCheck;
+        return Icons.check_circle_outline;
       case 'in_progress':
-        return FontAwesomeIcons.circleNotch;
+        return Icons.hourglass_empty_outlined;
       case 'error':
-        return FontAwesomeIcons.circleExclamation;
+        return Icons.error_outline;
       default:
-        return FontAwesomeIcons.circle;
+        return Icons.radio_button_unchecked_outlined;
     }
   }
 
@@ -292,7 +292,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      Icon(FontAwesomeIcons.triangleExclamation, 
+                      Icon(Icons.warning_amber_outlined, 
                           color: colorScheme.error),
                       const SizedBox(width: 12),
                       Expanded(
@@ -353,7 +353,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                       Row(
                         children: [
                           Icon(
-                            FontAwesomeIcons.circleCheck,
+                            Icons.check_circle_outline,
                             color: Colors.green,
                             size: 24,
                           ),
@@ -371,7 +371,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                         Row(
                           children: [
                             Icon(
-                              FontAwesomeIcons.database,
+                              Icons.storage_outlined,
                               color: Colors.green,
                               size: 20,
                             ),
@@ -444,19 +444,19 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
     
     switch (step.status) {
       case 'completed':
-        icon = FontAwesomeIcons.circleCheck;
+        icon = Icons.check_circle_outline;
         iconColor = Colors.green;
         break;
       case 'in_progress':
-        icon = FontAwesomeIcons.circleNotch;
+        icon = Icons.hourglass_empty_outlined;
         iconColor = Colors.blue;
         break;
       case 'error':
-        icon = FontAwesomeIcons.circleExclamation;
+        icon = Icons.error_outline;
         iconColor = Colors.red;
         break;
       default:
-        icon = FontAwesomeIcons.circle;
+        icon = Icons.radio_button_unchecked_outlined;
         iconColor = Colors.grey;
     }
     

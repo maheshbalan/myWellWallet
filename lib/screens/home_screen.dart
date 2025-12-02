@@ -502,7 +502,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 return Transform.scale(
                                   scale: _micAnimation.value,
                                   child: const Icon(
-                                    FontAwesomeIcons.microphone,
+                                    Icons.mic_outlined,
                                     color: Colors.red,
                                     size: 20,
                                   ),
@@ -555,7 +555,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           child: ElevatedButton.icon(
                             onPressed: () => _handleFollowUpPrompt(prompt),
                             icon: const Icon(
-                              FontAwesomeIcons.lightbulb,
+                              Icons.lightbulb_outline,
                               size: 18,
                             ),
                             label: Text(
