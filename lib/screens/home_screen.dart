@@ -307,15 +307,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             onPressed: () => context.go('/profile'),
             tooltip: 'Profile',
           ),
-          IconButton(
-            icon: const Icon(FontAwesomeIcons.flask),
-            onPressed: () => context.go('/test-sse'),
-            tooltip: 'Test Connection',
+          // Test Connection Button (more appealing)
+          Container(
+            margin: const EdgeInsets.only(right: 4),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: IconButton(
+              icon: const Icon(
+                FontAwesomeIcons.flask,
+                color: Colors.blue,
+              ),
+              onPressed: () => context.go('/test-sse'),
+              tooltip: 'Test Connection',
+            ),
           ),
-          IconButton(
-            icon: const Icon(FontAwesomeIcons.download),
-            onPressed: () => context.go('/fetch-data'),
-            tooltip: 'Fetch Data',
+          // Fetch Data Button (more appealing)
+          Container(
+            margin: const EdgeInsets.only(right: 4),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: IconButton(
+              icon: const Icon(
+                FontAwesomeIcons.download,
+                color: Colors.green,
+              ),
+              onPressed: () => context.go('/fetch-data'),
+              tooltip: 'Fetch Data',
+            ),
           ),
           IconButton(
             icon: const Icon(FontAwesomeIcons.rightFromBracket),

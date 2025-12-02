@@ -19,6 +19,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  DateTime? _dateOfBirth;
   bool _isEditing = false;
   bool _isLoadingPatient = false;
   Patient? _patientData;
@@ -36,6 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (user != null) {
       _nameController.text = user.name;
       _emailController.text = user.email;
+      _dateOfBirth = user.dateOfBirth;
     }
   }
 
@@ -71,23 +73,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _saveProfile() async {
-    if (_nameController.text.trim().isEmpty || _emailController.text.trim().isEmpty) {
+    if (_nameController.text.trim().isEmpty || 
+        _emailController.text.trim().isEmpty ||
+        _dateOfBirth == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields')),
+        const SnackBar(content: Text('Please fill in all fields including date of birth')),
       );
       return;
     }
 
     try {
       final authProvider = context.read<AuthProvider>();
-      final user = authProvider.currentUser;
       await authProvider.updateUser(
         _nameController.text.trim(),
         _emailController.text.trim(),
-        user?.dateOfBirth, // Keep existing DOB if not editing it
+        _dateOfBirth,
       );
       
-      // Reload patient data with new name
+      // Reload patient data with new name and DOB
       await _loadPatientData();
       
       setState(() {
