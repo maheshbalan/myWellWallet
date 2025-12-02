@@ -61,7 +61,7 @@ class DataSyncService {
       // Step 2: Fetch from FHIR MCP Gateway
       _updateStep('Fetching from FHIR MCP Gateway', 'in_progress', 'Connecting to server...');
       
-      // Step 2a: Fetch Patient resource
+      // Step 2a: Fetch Patient resource (single patient - always 1 record)
       debugPrint('Fetching Patient resource: /Patient/$patientId');
       _updateStatus(statuses, 'Patient', 'in_progress', progress: 0.2);
       final patientCount = await _fetchResource(
@@ -70,8 +70,9 @@ class DataSyncService {
         '/Patient/$patientId',
         statuses,
       );
-      debugPrint('Patient fetch complete: $patientCount records');
-      resourceCounts['Patient'] = patientCount;
+      // Ensure Patient count is 1 (we're fetching data for a single patient)
+      resourceCounts['Patient'] = patientCount > 0 ? 1 : 0;
+      debugPrint('Patient fetch complete: ${resourceCounts['Patient']} record(s)');
       _updateStatus(statuses, 'Patient', 'completed', count: patientCount);
 
       // Step 2b: Fetch other resources in sequence
@@ -240,7 +241,7 @@ class DataSyncService {
           }).toList();
         }
       } else if (resultData is Map && resultData.containsKey('resourceType')) {
-        // Single resource (not a Bundle)
+        // Single resource (not a Bundle) - common for Patient resource when fetching by ID
         resources = [resultData as Map<String, dynamic>];
       }
 
@@ -253,6 +254,11 @@ class DataSyncService {
         } catch (e) {
           debugPrint('Error saving resource: $e');
         }
+      }
+      
+      // For Patient resource type, ensure we return 1 (single patient per fetch)
+      if (resourceType == 'Patient' && savedCount > 0) {
+        return 1;
       }
 
       // Handle pagination if needed
