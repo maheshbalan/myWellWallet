@@ -7,11 +7,12 @@ import '../models/patient.dart';
 /// MCP Client for connecting to FHIR MCP Server via HTTP/SSE
 class MCPClient {
   final String baseUrl;
+  final String apiKey;
   String? _sessionId;
   bool _initialized = false;
   final Map<String, Completer<Map<String, dynamic>>> _pendingRequests = {};
 
-  MCPClient({required this.baseUrl});
+  MCPClient({required this.baseUrl, required this.apiKey});
 
   bool get isInitialized => _initialized;
 
@@ -26,6 +27,7 @@ class MCPClient {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json, text/event-stream',
+          'X-API-Key': apiKey,
         },
         body: jsonEncode({
           'jsonrpc': '2.0',

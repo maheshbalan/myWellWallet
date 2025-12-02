@@ -15,6 +15,7 @@ class MCPSSETestScreen extends StatefulWidget {
 class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
   final MCPClientSSE _client = MCPClientSSE(
     baseUrl: 'https://mcp-fhir-server.com',
+    apiKey: '9mgmf20y4hRDq6-VuvHM8E5PRUQJDLVHI0gB_pFMiTY',
   );
   
   bool _isRunning = false;

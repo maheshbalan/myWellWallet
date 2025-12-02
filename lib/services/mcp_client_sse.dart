@@ -9,12 +9,13 @@ import '../models/patient.dart';
 /// Note: For mobile, we maintain session state via session ID in headers rather than true SSE stream
 class MCPClientSSE {
   final String baseUrl;
+  final String apiKey;
   String? _sessionId;
   bool _initialized = false;
   final Map<String, Completer<Map<String, dynamic>>> _pendingRequests = {};
   Timer? _keepAliveTimer;
 
-  MCPClientSSE({required this.baseUrl});
+  MCPClientSSE({required this.baseUrl, required this.apiKey});
 
   String? get sessionId => _sessionId;
 
@@ -31,6 +32,7 @@ class MCPClientSSE {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json, text/event-stream',
+          'X-API-Key': apiKey,
         },
         body: jsonEncode({
           'jsonrpc': '2.0',
@@ -81,6 +83,7 @@ class MCPClientSSE {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json, text/event-stream',
+            'X-API-Key': apiKey,
             'Mcp-Session-Id': _sessionId!,
           },
           body: jsonEncode({
@@ -166,6 +169,7 @@ class MCPClientSSE {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json, text/event-stream',
+          'X-API-Key': apiKey,
           'Mcp-Session-Id': _sessionId!,
         },
         body: jsonEncode({
@@ -202,6 +206,7 @@ class MCPClientSSE {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json, text/event-stream',
+            'X-API-Key': apiKey,
             'Mcp-Session-Id': _sessionId!,
           },
           body: jsonEncode({
