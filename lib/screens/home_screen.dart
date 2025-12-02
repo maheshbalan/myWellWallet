@@ -299,13 +299,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       appBar: AppBar(
         title: const Text(
           'MyWellWallet',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+            fontFamily: 'Roboto',
+          ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(FontAwesomeIcons.user),
-            onPressed: () => context.go('/profile'),
-            tooltip: 'Profile',
+          // Profile Button (more appealing)
+          Container(
+            margin: const EdgeInsets.only(right: 4),
+            decoration: BoxDecoration(
+              color: Colors.purple.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: IconButton(
+              icon: const Icon(
+                FontAwesomeIcons.user,
+                color: Colors.purple,
+              ),
+              onPressed: () => context.go('/profile'),
+              tooltip: 'Profile',
+            ),
           ),
           // Test Connection Button (more appealing)
           Container(
