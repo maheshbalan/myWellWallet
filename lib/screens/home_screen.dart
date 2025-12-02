@@ -56,10 +56,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       'timestamp': DateTime.now(),
     });
     _followUpPrompts = [
-      'Show me the most recent timeline',
-      'Show me my medications',
-      'Show me the recent tests',
-      'Show me the latest diagnostic reports',
+      'Show me my recent visits',
+      'Show me my immunization record',
+      'Show me my Test Results',
     ];
   }
 
@@ -299,12 +298,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       appBar: AppBar(
         title: const Text(
           'MyWellWallet',
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.5,
-            fontFamily: 'Roboto',
-          ),
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
         actions: [
           // Profile Button (more appealing)
