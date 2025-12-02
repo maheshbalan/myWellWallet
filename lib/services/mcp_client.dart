@@ -208,6 +208,7 @@ class MCPClient {
       final headers = <String, String>{
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
+        'X-API-Key': apiKey,
       };
       
       // Session ID is REQUIRED in header for all requests after initialization
