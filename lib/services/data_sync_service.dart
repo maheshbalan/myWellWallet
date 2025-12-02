@@ -71,9 +71,10 @@ class DataSyncService {
         statuses,
       );
       // Ensure Patient count is 1 (we're fetching data for a single patient)
-      resourceCounts['Patient'] = patientCount > 0 ? 1 : 0;
-      debugPrint('Patient fetch complete: ${resourceCounts['Patient']} record(s)');
-      _updateStatus(statuses, 'Patient', 'completed', count: patientCount);
+      final finalPatientCount = patientCount > 0 ? 1 : 0;
+      resourceCounts['Patient'] = finalPatientCount;
+      debugPrint('Patient fetch complete: $finalPatientCount record(s)');
+      _updateStatus(statuses, 'Patient', 'completed', count: finalPatientCount);
 
       // Step 2b: Fetch other resources in sequence
       int stepIndex = 0;
