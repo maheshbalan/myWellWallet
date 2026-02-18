@@ -181,5 +181,3 @@ When users ask questions in natural language (e.g., "Show me my recent visits"),
 - US Core Implementation Guide: https://www.hl7.org/fhir/us/core/
 - FHIR Search Parameters: https://www.hl7.org/fhir/search.html
 
-
-

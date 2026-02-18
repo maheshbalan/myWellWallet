@@ -269,15 +269,15 @@ When user asks natural language query:
 - [x] Add fetch summary persistence
 
 ### Step 6: Implement Local RAG (Basic)
-- [ ] Create `local_rag_service.dart`
-- [ ] Implement document embedding (simple approach first)
-- [ ] Implement retrieval
-- [ ] Integrate with GemmaService
+- [x] Create `local_rag_service.dart`
+- [x] Implement document embedding (simple approach first - keyword-based retrieval)
+- [x] Implement retrieval
+- [x] Integrate with GemmaService
 
 ### Step 7: Update Query Processing
-- [ ] Modify QueryProvider to use local RAG
-- [ ] Add SQLite query generation
-- [ ] Implement local-first, MCP-fallback logic
+- [x] Modify QueryProvider to use local RAG
+- [x] Add SQLite query generation (via LocalQueryService)
+- [x] Implement local-first, MCP-fallback logic
 
 ### Step 8: Vectorize FHIR Data
 - [ ] Create embedding service for FHIR resources
@@ -285,8 +285,8 @@ When user asks natural language query:
 - [ ] Store embeddings in database
 
 ### Step 9: Markdown Response Formatting
-- [ ] Create markdown formatter
-- [ ] Format FHIR data as human-readable text
+- [x] Create markdown formatter (in LocalQueryService)
+- [x] Format FHIR data as human-readable text
 - [ ] Add copy-to-clipboard functionality
 
 ## UI/UX Improvements Completed

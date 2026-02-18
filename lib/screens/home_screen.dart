@@ -225,16 +225,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       } else if (queryProvider.lastResult != null) {
         final result = queryProvider.lastResult!;
-        final response = await _gemmaService.generateResponse(
-          query,
-          result,
-        );
+        String response;
+        
+        // Check if result has markdown (from local query)
+        if (result['result'] != null && result['result']['markdown'] != null) {
+          response = result['result']['markdown'] as String;
+        } else {
+          // Generate response using Gemma service for MCP results
+          response = await _gemmaService.generateResponse(
+            query,
+            result['result'] ?? result,
+          );
+        }
 
         setState(() {
           _messages.add({
             'isUser': false,
             'message': response,
             'timestamp': DateTime.now(),
+            'isMarkdown': result['result'] != null && result['result']['markdown'] != null,
           });
           // Generate follow-up prompts based on query
           if (query.toLowerCase().contains('visit') || query.toLowerCase().contains('encounter')) {
@@ -623,6 +632,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             isUser: message['isUser'] as bool,
                             message: message['message'] as String,
                             timestamp: message['timestamp'] as DateTime,
+                            isMarkdown: message['isMarkdown'] as bool? ?? false,
                           ),
                         );
                       },

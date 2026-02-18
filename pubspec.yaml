@@ -67,6 +67,10 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - docs/FHIR_MEDICAL_GLOSSARY.md
+    - docs/SQLITE_SCHEMA.md
+    - docs/README_MOBILE_CLIENT.md
+    - docs/FHIR_MCP_SERVER_README.md
 
 # App Icon Configuration
 flutter_launcher_icons:

@@ -2,12 +2,16 @@ import 'package:flutter/foundation.dart';
 import '../services/mcp_client.dart';
 import '../services/nlp_service.dart';
 import '../services/gemma_service.dart';
+import '../services/local_query_service.dart';
+import '../services/gemma_rag_service.dart';
 import '../providers/patient_provider.dart';
 
 class QueryProvider with ChangeNotifier {
   final MCPClient mcpClient;
   final NLPService nlpService = NLPService();
   final GemmaService gemmaService = GemmaService();
+  LocalQueryService? _localQueryService;
+  GemmaRAGService? _gemmaRAGService;
   PatientProvider? _patientProvider;
   
   String? _lastQuery;
@@ -15,8 +19,22 @@ class QueryProvider with ChangeNotifier {
   bool _isProcessing = false;
   String? _error;
   String? _currentPatientId;
+  Map<String, dynamic>? _pendingClarification;
 
   QueryProvider({required this.mcpClient});
+
+  void setLocalQueryService(LocalQueryService service) {
+    _localQueryService = service;
+    // Initialize GemmaRAGService when LocalQueryService is available
+    if (_gemmaRAGService == null) {
+      // We'll need DatabaseService - get it from LocalQueryService
+      // For now, we'll initialize it in a different way
+    }
+  }
+  
+  void setGemmaRAGService(GemmaRAGService service) {
+    _gemmaRAGService = service;
+  }
 
   void setPatientProvider(PatientProvider provider) {
     _patientProvider = provider;
@@ -31,7 +49,7 @@ class QueryProvider with ChangeNotifier {
   bool get isProcessing => _isProcessing;
   String? get error => _error;
 
-  /// Process a natural language query
+  /// Process a natural language query with local-first approach
   Future<void> processQuery(String query) async {
     if (query.trim().isEmpty) return;
 
@@ -46,42 +64,105 @@ class QueryProvider with ChangeNotifier {
         _currentPatientId = _patientProvider!.foundPatient!.id;
       }
       
-      // Interpret the query using Gemma service with context awareness
-      final interpretation = await gemmaService.interpretQueryWithContext(query);
+      if (_currentPatientId == null) {
+        throw Exception('Patient ID not available. Please ensure you are logged in and patient context is established.');
+      }
       
-      // Fallback to NLP service if Gemma doesn't provide tool
-      if (interpretation['tool'] == null || interpretation['tool'] == 'request_generic_resource') {
-        final nlpInterpretation = await nlpService.interpretQuery(query, patientId: _currentPatientId);
-        interpretation['tool'] = nlpInterpretation['tool'];
-        interpretation['params'] = nlpInterpretation['params'];
-        interpretation['intent'] = nlpInterpretation['intent'];
-      } else {
-        // Add patient context to interpretation params if available
-        if (_currentPatientId != null && interpretation['params'] is Map) {
-          final params = interpretation['params'] as Map<String, dynamic>;
-          if (params.containsKey('request') && params['request'] is Map) {
-            final request = params['request'] as Map<String, dynamic>;
-            if (request.containsKey('path') && request['path'] is String) {
-              final path = request['path'] as String;
-              // Add patient filter to path if it's a resource query
-              if (path.startsWith('/') && !path.contains('subject=') && !path.contains('patient=')) {
-                final separator = path.contains('?') ? '&' : '?';
-                request['path'] = '$path$separator subject=Patient/$_currentPatientId';
-              }
+      // Interpret the query using Gemma service with RAG context
+      final interpretation = await gemmaService.interpretQueryWithContext(
+        query,
+        patientId: _currentPatientId,
+      );
+      
+      // Determine query type (local-first approach)
+      final queryType = interpretation['queryType'] as String? ?? 'mcp';
+      final localQuery = interpretation['localQuery'] as Map<String, dynamic>?;
+      final mcpQuery = interpretation['mcpQuery'] as Map<String, dynamic>?;
+      
+      Map<String, dynamic>? result;
+      bool fromLocal = false;
+      
+      // Try local database first if query type is 'local' or 'both'
+      if ((queryType == 'local' || queryType == 'both') && 
+          localQuery != null && 
+          _localQueryService != null) {
+        try {
+          final resourceType = localQuery['resourceType'] as String?;
+          final filters = localQuery['filters'] as Map<String, dynamic>?;
+          
+          if (resourceType != null) {
+            // Extract record index if specified
+            final recordIndex = localQuery['recordIndex'] as int?;
+            
+            // Query local database
+            final localResources = await _localQueryService!.queryLocal(
+              _currentPatientId!,
+              resourceType,
+              filters: filters,
+              recordIndex: recordIndex,
+            );
+            
+            if (localResources.isNotEmpty) {
+              // Format as markdown
+              final markdown = _localQueryService!.formatAsMarkdown(
+                localResources,
+                resourceType,
+              );
+              
+              result = {
+                'source': 'local',
+                'resourceType': resourceType,
+                'count': localResources.length,
+                'resources': localResources,
+                'markdown': markdown,
+              };
+              fromLocal = true;
             }
           }
+        } catch (e) {
+          debugPrint('Error querying local database: $e');
+          // Continue to MCP query if local fails
         }
       }
       
-      // Call the appropriate MCP tool
-      final result = await mcpClient.callTool(
-        interpretation['tool'] as String,
-        interpretation['params'] as Map<String, dynamic>,
-      );
+      // Fallback to MCP Gateway if local query failed or query type is 'mcp'
+      if (!fromLocal && mcpQuery != null) {
+        final tool = mcpQuery['tool'] as String?;
+        final params = mcpQuery['params'] as Map<String, dynamic>?;
+        
+        if (tool != null && params != null) {
+          result = await mcpClient.callTool(tool, params);
+          result = {
+            'source': 'mcp',
+            'result': result,
+          };
+        } else {
+          // Fallback to NLP service
+          final nlpInterpretation = await nlpService.interpretQuery(
+            query,
+            patientId: _currentPatientId,
+          );
+          
+          result = await mcpClient.callTool(
+            nlpInterpretation['tool'] as String,
+            nlpInterpretation['params'] as Map<String, dynamic>,
+          );
+          result = {
+            'source': 'mcp',
+            'result': result,
+          };
+        }
+      }
+      
+      if (result == null) {
+        throw Exception('Could not process query: No valid interpretation found');
+      }
 
       _lastResult = {
         'interpretation': interpretation,
         'result': result,
+        'queryType': queryType,
+        'fromLocal': fromLocal,
       };
       _error = null;
     } catch (e) {

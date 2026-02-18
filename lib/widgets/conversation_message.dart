@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class ConversationMessage extends StatelessWidget {
   final bool isUser;
   final String message;
   final DateTime timestamp;
+  final bool isMarkdown;
 
   const ConversationMessage({
     super.key,
     required this.isUser,
     required this.message,
     required this.timestamp,
+    this.isMarkdown = false,
   });
 
   @override
@@ -41,27 +44,70 @@ class ConversationMessage extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isUser 
-                    ? colorScheme.primary 
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(16).copyWith(
-                  bottomLeft: isUser ? const Radius.circular(16) : const Radius.circular(4),
-                  bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(16),
+            child: GestureDetector(
+              onLongPress: () {
+                // Copy to clipboard on long press
+                Clipboard.setData(ClipboardData(text: message));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Copied to clipboard'),
+                    duration: const Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isUser 
+                      ? colorScheme.primary 
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(16).copyWith(
+                    bottomLeft: isUser ? const Radius.circular(16) : const Radius.circular(4),
+                    bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(16),
+                  ),
+                  border: isUser ? null : Border.all(
+                    color: Colors.grey.shade200,
+                    width: 1,
+                  ),
                 ),
-                border: isUser ? null : Border.all(
-                  color: Colors.grey.shade200,
-                  width: 1,
-                ),
-              ),
-              child: Text(
-                message,
-                style: TextStyle(
-                  color: isUser ? Colors.white : const Color(0xFF2C3E50),
-                  fontSize: 15,
-                  height: 1.5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isMarkdown && !isUser)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.copy_outlined, size: 16),
+                            color: Colors.grey.shade600,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: message));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('Copied to clipboard'),
+                                  duration: const Duration(seconds: 2),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            },
+                            tooltip: 'Copy to clipboard',
+                          ),
+                        ],
+                      ),
+                    isMarkdown
+                        ? _MarkdownText(text: message, isUser: isUser)
+                        : Text(
+                            message,
+                            style: TextStyle(
+                              color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                              fontSize: 15,
+                              height: 1.5,
+                            ),
+                          ),
+                  ],
                 ),
               ),
             ),
@@ -208,3 +254,107 @@ class _PulsingIconState extends State<_PulsingIcon>
   }
 }
 
+/// Simple markdown text renderer for health data
+class _MarkdownText extends StatelessWidget {
+  final String text;
+  final bool isUser;
+
+  const _MarkdownText({required this.text, required this.isUser});
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = text.split('\n');
+    final widgets = <Widget>[];
+
+    for (var line in lines) {
+      if (line.trim().isEmpty) {
+        widgets.add(const SizedBox(height: 8));
+        continue;
+      }
+
+      if (line.startsWith('# ')) {
+        // H1
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8, top: 4),
+            child: Text(
+              line.substring(2),
+              style: TextStyle(
+                color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                height: 1.4,
+              ),
+            ),
+          ),
+        );
+      } else if (line.startsWith('## ')) {
+        // H2
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6, top: 4),
+            child: Text(
+              line.substring(3),
+              style: TextStyle(
+                color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+              ),
+            ),
+          ),
+        );
+      } else if (line.startsWith('**') && line.endsWith('**')) {
+        // Bold
+        final boldText = line.substring(2, line.length - 2);
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              boldText,
+              style: TextStyle(
+                color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                height: 1.5,
+              ),
+            ),
+          ),
+        );
+      } else if (line.startsWith('---')) {
+        // Horizontal rule
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Divider(
+              color: isUser
+                  ? Colors.white.withOpacity(0.3)
+                  : Colors.grey.shade300,
+              thickness: 1,
+            ),
+          ),
+        );
+      } else {
+        // Regular text
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              line,
+              style: TextStyle(
+                color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                fontSize: 15,
+                height: 1.5,
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
+  }
+}

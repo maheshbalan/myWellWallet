@@ -1,5 +1,5 @@
 # Uncomment this line to define a global platform for your project
-# platform :ios, '12.0'
+platform :ios, '13.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -39,5 +39,23 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      # speech_to_text (darwin) requires iOS 13.0+
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      # Fix CwlCatchExceptionSupport: allow non-modular includes so CwlCatchException.h is found
+      if target.name == 'CwlCatchExceptionSupport'
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      end
+    end
+  end
+
+  # Patch CwlCatchExceptionSupport umbrella header to use quotes so CwlCatchException.h is found
+  umbrella_path = File.join(installer.sandbox.root, 'Target Support Files', 'CwlCatchExceptionSupport', 'CwlCatchExceptionSupport-umbrella.h')
+  if File.exist?(umbrella_path)
+    contents = File.read(umbrella_path)
+    if contents.include?('#import <CwlCatchException.h>')
+      contents.gsub!('#import <CwlCatchException.h>', '#import "CwlCatchException.h"')
+      File.write(umbrella_path, contents)
+    end
   end
 end
