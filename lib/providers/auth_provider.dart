@@ -31,8 +31,9 @@ class AuthProvider with ChangeNotifier {
       final users = await _database.getAllUsers();
       if (users.isNotEmpty) {
         _currentUser = users.first;
-        // Don't auto-authenticate - require login
-        _isAuthenticated = false;
+        // Don't overwrite _isAuthenticated here: user may have just completed
+        // biometric login while _loadUser() was still running (race). Only
+        // set currentUser; leave auth state as-is so we don't bounce back to login.
       }
     } catch (e) {
       debugPrint('Error loading user: $e');
@@ -52,9 +53,13 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// Set authenticated state (for PIN login)
+  /// Set authenticated state (for PIN login). If setting true and _currentUser is null (e.g. after logout), reloads user from DB.
   Future<void> setAuthenticated(bool value) async {
     _isAuthenticated = value;
+    if (value && _currentUser == null) {
+      final users = await _database.getAllUsers();
+      if (users.isNotEmpty) _currentUser = users.first;
+    }
     notifyListeners();
   }
 
@@ -204,6 +209,11 @@ class AuthProvider with ChangeNotifier {
 
       if (didAuthenticate) {
         _isAuthenticated = true;
+        // After logout, _currentUser is null; reload from DB so HomeScreen doesn't redirect back to login
+        if (_currentUser == null) {
+          final users = await _database.getAllUsers();
+          if (users.isNotEmpty) _currentUser = users.first;
+        }
         _isLoading = false;
         notifyListeners();
         return true;

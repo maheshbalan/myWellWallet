@@ -1,0 +1,23 @@
+---
+description: Use full permissions for Flutter commands that write to SDK/cache
+alwaysApply: true
+---
+
+# Flutter terminal commands
+
+When running these commands in the terminal, **always request full permissions** (e.g. `required_permissions: ["all"]`) so they can write to the Flutter SDK cache and succeed:
+
+- `flutter clean`
+- `flutter pub get` (if it fails with permission or cache errors)
+- `flutter pub upgrade`
+- Any other Flutter CLI command that might touch the Flutter SDK or cache outside the project directory
+
+Without full permissions, such commands can fail with "Operation not permitted" when writing to the Flutter install (e.g. `cache/engine.stamp`).
+
+## iOS physical device
+
+When running on a **physical iPhone** (not Simulator), always use **Release** or the app will crash with "Unable to flip between RX and RW memory protection". Use:
+
+- `flutter run --release -d <device_id>`
+
+See `docs/IOS_DEBUG_CRASH.md` for details and Xcode scheme setup.

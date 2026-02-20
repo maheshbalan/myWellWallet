@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
+import '../models/patient.dart';
 import '../providers/query_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/patient_provider.dart';
@@ -65,8 +66,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _establishPatientContext() async {
     final authProvider = context.read<AuthProvider>();
     final user = authProvider.currentUser;
-    if (user != null && user.dateOfBirth != null) {
-      final patientProvider = context.read<PatientProvider>();
+    if (user == null) return;
+
+    final patientProvider = context.read<PatientProvider>();
+    final existing = patientProvider.foundPatient;
+
+    // If we already have a patient that matches the current user, reuse it so we don't clear
+    // foundPatient (search* clears it at start) and avoid "Patient ID not available" on query.
+    if (existing != null && _foundPatientMatchesUser(existing, user.name, user.dateOfBirth)) {
+      _gemmaService.setContext(
+        'Patient: ${existing.displayName}, ID: ${existing.id}',
+      );
+      return;
+    }
+
+    if (user.dateOfBirth != null) {
       try {
         await patientProvider.searchPatientByNameAndDOB(
           user.name,
@@ -92,8 +106,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           debugPrint('Could not establish patient context with name only: $e2');
         }
       }
-    } else if (user != null) {
-      final patientProvider = context.read<PatientProvider>();
+    } else {
       try {
         await patientProvider.searchPatientByName(user.name);
         final patient = patientProvider.foundPatient;
@@ -106,6 +119,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         debugPrint('Could not establish patient context: $e');
       }
     }
+  }
+
+  static bool _foundPatientMatchesUser(
+    Patient patient,
+    String userName,
+    DateTime? userDob,
+  ) {
+    final nameMatch = patient.displayName
+            .toLowerCase()
+            .contains(userName.toLowerCase()) ||
+        userName.toLowerCase().contains(patient.displayName.toLowerCase());
+    if (!nameMatch) return false;
+    if (userDob == null) return true;
+    final birthDate = patient.birthDate;
+    if (birthDate == null) return true;
+    final patientDob = birthDate.split('T').first;
+    final expected = userDob.toIso8601String().split('T').first;
+    return patientDob == expected;
   }
 
   Future<void> _checkAuthentication() async {
@@ -306,11 +337,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
-        title: const Text(
-          'MyWellWallet',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-        ),
+        title: const Text('MyWellWallet'),
         actions: [
           // Profile Button - Clean Health UI Kit style
           IconButton(
