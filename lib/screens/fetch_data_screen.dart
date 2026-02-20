@@ -8,6 +8,7 @@ import '../services/data_sync_service.dart';
 import '../services/mcp_client.dart';
 import '../services/database_service.dart';
 import '../models/fetch_status.dart';
+import '../widgets/app_bottom_nav.dart';
 
 class FetchDataScreen extends StatefulWidget {
   const FetchDataScreen({super.key});
@@ -242,8 +243,14 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header Card
+            // Header Card (light tint)
             Card(
+              color: const Color(0xFFE3F2FD),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: Color(0xFFBBDEFB)),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -251,7 +258,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
                     Icon(
                       Icons.cloud_download_outlined,
                       size: 48,
-                      color: colorScheme.primary,
+                      color: const Color(0xFF1976D2),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -435,6 +442,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
           ],
         ),
       ),
+      bottomNavigationBar: const AppBottomNav(currentPath: '/fetch-data'),
     );
   }
 

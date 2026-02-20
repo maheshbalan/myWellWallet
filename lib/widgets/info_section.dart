@@ -19,6 +19,12 @@ class InfoSection extends StatelessWidget {
     
     return Card(
       margin: const EdgeInsets.only(bottom: 20),
+      color: const Color(0xFFF5F3FF),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: Color(0xFFE8E0F0)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
@@ -30,13 +36,13 @@ class InfoSection extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: colorScheme.primary.withOpacity(0.1),
+                    color: const Color(0xFFE8E0F0),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     icon,
                     size: 20,
-                    color: colorScheme.primary,
+                    color: const Color(0xFF7B1FA2),
                   ),
                 ),
                 const SizedBox(width: 16),

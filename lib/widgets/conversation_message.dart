@@ -27,26 +27,24 @@ class ConversationMessage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser) ...[
-            // Avatar for assistant
             Container(
-              width: 32,
-              height: 32,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: colorScheme.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+                color: const Color(0xFFE8E0F0),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
-                FontAwesomeIcons.heartPulse,
-                size: 16,
-                color: colorScheme.primary,
+              child: const Icon(
+                Icons.medical_services_outlined,
+                size: 18,
+                color: Color(0xFF7B1FA2),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
           ],
           Flexible(
             child: GestureDetector(
               onLongPress: () {
-                // Copy to clipboard on long press
                 Clipboard.setData(ClipboardData(text: message));
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -57,19 +55,27 @@ class ConversationMessage extends StatelessWidget {
                 );
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
-                  color: isUser 
-                      ? colorScheme.primary 
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(16).copyWith(
-                    bottomLeft: isUser ? const Radius.circular(16) : const Radius.circular(4),
-                    bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(16),
-                  ),
-                  border: isUser ? null : Border.all(
-                    color: Colors.grey.shade200,
-                    width: 1,
-                  ),
+                  color: isUser
+                      ? colorScheme.primary
+                      : const Color(0xFFF5F3FF),
+                  borderRadius: BorderRadius.circular(20),
+                  border: isUser
+                      ? null
+                      : Border(
+                          left: const BorderSide(color: Color(0xFFB39DDB), width: 4),
+                          top: const BorderSide(color: Color(0xFFE8E0F0)),
+                          right: const BorderSide(color: Color(0xFFE8E0F0)),
+                          bottom: const BorderSide(color: Color(0xFFE8E0F0)),
+                        ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isUser ? 0.12 : 0.06),
+                      blurRadius: isUser ? 8 : 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,7 +86,7 @@ class ConversationMessage extends StatelessWidget {
                         children: [
                           IconButton(
                             icon: const Icon(Icons.copy_outlined, size: 16),
-                            color: Colors.grey.shade600,
+                            color: const Color(0xFF64748B),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                             onPressed: () {

@@ -8,6 +8,7 @@ import '../providers/auth_provider.dart';
 import '../providers/patient_provider.dart';
 import '../models/patient.dart';
 import '../widgets/info_section.dart';
+import '../widgets/app_bottom_nav.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -125,8 +126,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = authProvider.currentUser;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
         title: const Text('Profile'),
+        backgroundColor: Colors.white,
+        elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/'),
@@ -153,8 +157,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Profile Header
+            // Profile Header (light tint card)
             Card(
+              color: const Color(0xFFF5F3FF),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: Color(0xFFE8E0F0)),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(28.0),
                 child: Row(
@@ -163,7 +173,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       width: 72,
                       height: 72,
                       decoration: BoxDecoration(
-                        color: colorScheme.primary,
+                        color: const Color(0xFF7B1FA2),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Center(
@@ -202,7 +212,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Text(
                               user?.email ?? '',
                               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: const Color(0xFF7F8C8D),
+                                color: const Color(0xFF64748B),
                               ),
                             ),
                           ],
@@ -269,7 +279,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             : '${_dateOfBirth!.year}-${_dateOfBirth!.month.toString().padLeft(2, '0')}-${_dateOfBirth!.day.toString().padLeft(2, '0')}',
                         style: TextStyle(
                           color: _dateOfBirth == null 
-                              ? Colors.grey[600] 
+                              ? const Color(0xFF64748B) 
                               : Theme.of(context).textTheme.bodyLarge?.color,
                         ),
                       ),
@@ -346,7 +356,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text(
                         'Please check and input the correct name',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF7F8C8D),
+                          color: const Color(0xFF64748B),
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -357,6 +367,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
+      bottomNavigationBar: const AppBottomNav(currentPath: '/profile'),
     );
   }
 }

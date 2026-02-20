@@ -110,71 +110,95 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
     }
   }
 
-  /// Theme without Google Fonts to avoid iOS SIGABRT on font load.
+  /// Theme: purple accent, light background, rounded cards (design-reference style). No Google Fonts (iOS safe).
   static ThemeData _buildSafeTheme() {
+    const primaryPurple = Color(0xFF7C3AED);
+    const primaryPurpleLight = Color(0xFFA78BFA);
+    const surfaceDark = Color(0xFF1E293B);
+    const surfaceMuted = Color(0xFF64748B);
     const colorScheme = ColorScheme.light(
-      primary: Color(0xFF4A90E2),
-      secondary: Color(0xFF7ED321),
-      tertiary: Color(0xFFF5A623),
+      primary: primaryPurple,
+      secondary: primaryPurpleLight,
+      tertiary: Color(0xFFF59E0B),
       surface: Colors.white,
-      background: Color(0xFFF8F9FA),
-      error: Color(0xFFE74C3C),
+      background: Color(0xFFFAFAFA),
+      error: Color(0xFFDC2626),
       onPrimary: Colors.white,
       onSecondary: Colors.white,
-      onSurface: Color(0xFF2C3E50),
-      onBackground: Color(0xFF2C3E50),
+      onSurface: surfaceDark,
+      onBackground: surfaceDark,
       onError: Colors.white,
       brightness: Brightness.light,
     );
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      textTheme: ThemeData.light().textTheme.apply(bodyColor: const Color(0xFF2C3E50)),
+      textTheme: ThemeData.light().textTheme.apply(
+        bodyColor: surfaceDark,
+        displayColor: surfaceDark,
+      ),
       appBarTheme: const AppBarTheme(
         centerTitle: true,
         elevation: 0,
+        scrolledUnderElevation: 0,
         backgroundColor: Colors.white,
-        foregroundColor: Color(0xFF2C3E50),
-        titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Color(0xFF2C3E50)),
-        iconTheme: IconThemeData(color: Color(0xFF2C3E50)),
+        foregroundColor: surfaceDark,
+        titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: surfaceDark),
+        iconTheme: IconThemeData(color: surfaceMuted),
       ),
       cardTheme: CardThemeData(
         elevation: 2,
+        shadowColor: Colors.black26,
         color: Colors.white,
-        shadowColor: Colors.black.withOpacity(0.05),
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.grey.shade100, width: 1),
         ),
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        clipBehavior: Clip.antiAlias,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          backgroundColor: const Color(0xFF4A90E2),
+          backgroundColor: primaryPurple,
           foregroundColor: Colors.white,
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.3),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primaryPurple,
+          side: const BorderSide(color: primaryPurpleLight),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: surfaceMuted,
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF4A90E2), width: 2),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: primaryPurple, width: 2),
         ),
+        labelStyle: const TextStyle(color: surfaceMuted),
+        hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
       ),
-      scaffoldBackgroundColor: const Color(0xFFF8F9FA),
+      scaffoldBackgroundColor: const Color(0xFFFAFAFA),
+      dividerColor: const Color(0xFFE2E8F0),
     );
   }
 

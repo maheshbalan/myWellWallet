@@ -105,146 +105,184 @@ class _LoginScreenState extends State<LoginScreen> {
     final authProvider = context.watch<AuthProvider>();
 
     return Scaffold(
+      backgroundColor: const Color(0xFFFAFAFA),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minHeight: MediaQuery.of(context).size.height - 
-                         MediaQuery.of(context).padding.top - 
-                         MediaQuery.of(context).padding.bottom - 48,
+              minHeight: MediaQuery.of(context).size.height -
+                  MediaQuery.of(context).padding.top -
+                  MediaQuery.of(context).padding.bottom -
+                  48,
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-              // App Icon - Clean Health UI Kit style
-              Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.favorite_outline,
-                  size: 56,
-                  color: colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 32),
-              
-              // App Title
-              Text(
-                'MyWellWallet',
-                style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              
-              // Welcome Text
-              Text(
-                'Welcome Back',
-                style: Theme.of(context).textTheme.headlineMedium,
-                textAlign: TextAlign.center,
-              ),
-              if (authProvider.currentUser != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  authProvider.currentUser!.name,
-                  style: Theme.of(context).textTheme.titleLarge,
-                  textAlign: TextAlign.center,
-                ),
-              ],
-              const SizedBox(height: 48),
-              
-              if (_isLoading) ...[
-                const CircularProgressIndicator(),
-                const SizedBox(height: 24),
-                const Text('Authenticating...'),
-              ] else if (_showPinInput) ...[
-                // PIN Input
-                TextField(
-                  controller: _pinController,
-                  decoration: const InputDecoration(
-                    labelText: 'Enter PIN',
-                    hintText: '4+ digits',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                  ),
-                  keyboardType: TextInputType.number,
-                  obscureText: true,
-                  maxLength: 10,
-                  onSubmitted: (_) => _authenticateWithPin(),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: _authenticateWithPin,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    minimumSize: const Size(double.infinity, 50),
-                  ),
-                  child: const Text('Login with PIN'),
-                ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _showPinInput = false;
-                    });
-                  },
-                  child: const Text('Use Biometric instead'),
-                ),
-              ] else ...[
-                // Biometric Button
-                ElevatedButton.icon(
-                  onPressed: _tryBiometricAuth,
-                  icon: const Icon(Icons.fingerprint_outlined),
-                  label: const Text('Login with Biometric'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    minimumSize: const Size(double.infinity, 50),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // PIN Button
-                ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _showPinInput = true;
-                    });
-                  },
-                  icon: const Icon(Icons.lock_outline),
-                  label: const Text('Login with PIN'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    minimumSize: const Size(double.infinity, 50),
-                  ),
-                ),
-              ],
-              
-              if (_errorMessage != null) ...[
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: colorScheme.error.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.warning_amber_outlined, color: colorScheme.error),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(color: colorScheme.error),
-                        ),
+                // Card-style content area (light tint)
+                Material(
+                  color: const Color(0xFFF5F3FF),
+                  borderRadius: BorderRadius.circular(24),
+                  elevation: 1,
+                  shadowColor: Colors.black12,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: const Color(0xFFE8E0F0)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 32,
                       ),
-                    ],
+                      child: Column(
+                        children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8E0F0),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.favorite_outline,
+                            size: 48,
+                            color: Color(0xFF7B1FA2),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'MyWellWallet',
+                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1E293B),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Welcome back',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: const Color(0xFF64748B),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        if (authProvider.currentUser != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            authProvider.currentUser!.name,
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: const Color(0xFF1E293B),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                        const SizedBox(height: 32),
+                        if (_isLoading) ...[
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 20),
+                          Text(
+                            'Authenticating...',
+                            style: TextStyle(
+                              color: colorScheme.onSurface.withOpacity(0.7),
+                              fontSize: 15,
+                            ),
+                          ),
+                        ] else if (_showPinInput) ...[
+                          TextField(
+                            controller: _pinController,
+                            decoration: const InputDecoration(
+                              labelText: 'Enter PIN',
+                              hintText: '4+ digits',
+                              prefixIcon: Icon(Icons.lock_outline),
+                            ),
+                            keyboardType: TextInputType.number,
+                            obscureText: true,
+                            maxLength: 10,
+                            onSubmitted: (_) => _authenticateWithPin(),
+                          ),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _authenticateWithPin,
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              ),
+                              child: const Text('Login with PIN'),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: () {
+                              setState(() => _showPinInput = false);
+                            },
+                            child: const Text('Use biometric instead'),
+                          ),
+                        ] else ...[
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _tryBiometricAuth,
+                              icon: const Icon(Icons.fingerprint_outlined, size: 22),
+                              label: const Text('Login with Biometric'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                setState(() => _showPinInput = true);
+                              },
+                              icon: const Icon(Icons.lock_outline, size: 20),
+                              label: const Text('Login with PIN'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: 20),
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: colorScheme.error.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: colorScheme.error.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  size: 20,
+                                  color: colorScheme.error,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: TextStyle(
+                                      color: colorScheme.error,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                      ),
+                    ),
                   ),
                 ),
-              ],
               ],
             ),
           ),

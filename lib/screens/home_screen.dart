@@ -10,6 +10,7 @@ import '../providers/auth_provider.dart';
 import '../providers/patient_provider.dart';
 import '../services/gemma_service.dart';
 import '../widgets/conversation_message.dart';
+import '../widgets/app_bottom_nav.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -30,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<String> _followUpPrompts = [];
   late AnimationController _micAnimationController;
   late Animation<double> _micAnimation;
+  bool _showScrollToBottom = false;
 
   @override
   void initState() {
@@ -43,10 +45,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _micAnimationController, curve: Curves.easeInOut),
     );
 
+    _scrollController.addListener(_onScroll);
     _initializeSpeech();
     _checkAuthentication();
     _establishPatientContext();
     _addWelcomeMessage();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final show = pos.maxScrollExtent - pos.pixels > 80;
+    if (show != _showScrollToBottom && mounted) {
+      setState(() => _showScrollToBottom = show);
+    }
   }
 
   void _addWelcomeMessage() {
@@ -149,50 +161,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _initializeSpeech() async {
-    final status = await Permission.microphone.request();
+    var status = await Permission.microphone.status;
+    if (!status.isGranted) {
+      status = await Permission.microphone.request();
+    }
     if (status.isGranted) {
       final available = await _speech.initialize(
         onStatus: (status) {
           if (status == 'done' || status == 'notListening') {
-            setState(() {
-              _isListening = false;
-            });
+            if (mounted) setState(() => _isListening = false);
           }
         },
         onError: (error) {
           debugPrint('Speech recognition error: $error');
-          setState(() {
-            _isListening = false;
-          });
+          if (mounted) setState(() => _isListening = false);
         },
       );
-      setState(() {
-        _speechAvailable = available;
-      });
+      if (mounted) setState(() => _speechAvailable = available);
     }
   }
 
   void _startListening() async {
-    if (!_speechAvailable) return;
+    if (!_speechAvailable) {
+      await _initializeSpeech();
+      if (!_speechAvailable && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Voice input is not available. Check microphone and speech recognition permissions.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+    }
 
-    setState(() {
-      _isListening = true;
-    });
+    if (!mounted) return;
+    setState(() => _isListening = true);
 
     await _speech.listen(
       onResult: (result) {
+        if (!mounted) return;
+        setState(() => _queryController.text = result.recognizedWords);
         if (result.finalResult) {
-          setState(() {
-            _queryController.text = result.recognizedWords;
-            _isListening = false;
-          });
-          _processQuery();
-        } else {
-          setState(() {
-            _queryController.text = result.recognizedWords;
-          });
+          _speech.stop();
+          setState(() => _isListening = false);
+          final text = _queryController.text.trim();
+          if (text.isNotEmpty) _processQuery();
         }
       },
+      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(seconds: 5),
+      partialResults: true,
     );
   }
 
@@ -215,7 +234,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final query = _queryController.text.trim();
     if (query.isEmpty) return;
 
-    // Add user message
+    // Add user message (no auto-scroll: question stays visible; user scrolls or uses down arrow)
     setState(() {
       _messages.add({
         'isUser': true,
@@ -225,8 +244,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _queryController.clear();
       _followUpPrompts = [];
     });
-
-    _scrollToBottom();
 
     // Add typing indicator
     setState(() {
@@ -291,6 +308,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ];
           }
         });
+        WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
       }
     } catch (e) {
       setState(() {
@@ -302,8 +320,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       });
     }
-
-    _scrollToBottom();
+    // No auto-scroll: user keeps question in view and scrolls down or uses arrow to see answer
   }
 
   void _handleFollowUpPrompt(String prompt) {
@@ -323,8 +340,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
+  /// Scroll after layout so new messages (e.g. from suggested question) stay visible.
+  void _scrollToBottomAfterResponse() {
+    _scrollToBottom();
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) _scrollToBottom();
+    });
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (mounted) _scrollToBottom();
+    });
+  }
+
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _queryController.dispose();
     _scrollController.dispose();
     _micAnimationController.dispose();
@@ -340,65 +369,65 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
         title: const Text('MyWellWallet'),
+        backgroundColor: Colors.white,
+        elevation: 0,
         actions: [
-          // Profile Button - Clean Health UI Kit style
-          IconButton(
-            icon: const Icon(
-              Icons.person_outline,
-              size: 24,
-            ),
-            onPressed: () => context.go('/profile'),
-            tooltip: 'Profile',
-          ),
-          // Test Connection Button - Clean Health UI Kit style
-          IconButton(
-            icon: const Icon(
-              Icons.science_outlined,
-              size: 24,
-            ),
-            onPressed: () => context.go('/test-sse'),
-            tooltip: 'Test Connection',
-          ),
-          // Fetch Data Button - Clean Health UI Kit style
-          IconButton(
-            icon: const Icon(
-              Icons.cloud_download_outlined,
-              size: 24,
-            ),
-            onPressed: () => context.go('/fetch-data'),
-            tooltip: 'Fetch Data',
-          ),
-          IconButton(
-            icon: const Icon(
-              Icons.logout_outlined,
-              size: 24,
-            ),
-            onPressed: () async {
-              await context.read<AuthProvider>().logout();
-              if (mounted) {
-                context.go('/login');
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Color(0xFF64748B)),
+            onSelected: (value) async {
+              if (value == 'test') {
+                context.go('/test-sse');
+              } else if (value == 'logout') {
+                await context.read<AuthProvider>().logout();
+                if (mounted) context.go('/login');
               }
             },
-            tooltip: 'Logout',
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'test',
+                child: ListTile(
+                  leading: Icon(Icons.science_outlined),
+                  title: Text('Test connection'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'logout',
+                child: ListTile(
+                  leading: Icon(Icons.logout_outlined),
+                  title: Text('Logout'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
         ],
       ),
+      bottomNavigationBar: const AppBottomNav(currentPath: '/'),
       body: SafeArea(
         child: Column(
           children: [
-            // Prominent Search Bar Section (at top, large and friendly)
+            // Purple header section with search (design-reference style)
             Container(
-              padding: const EdgeInsets.all(20),
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+                color: colorScheme.primary,
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(28),
+                  bottomRight: Radius.circular(28),
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: colorScheme.primary.withOpacity(0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Welcome text (larger, friendly)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 16),
                     child: Text(
@@ -406,29 +435,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontSize: 22,
                         fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurface,
+                        color: Colors.white,
                       ),
                     ),
                   ),
-                  
-                  // Large Search Bar
+                  // White rounded search bar inside purple area
                   Row(
                     children: [
                       Expanded(
                         child: Container(
-                          height: 60,
+                          height: 56,
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(
-                              color: _isListening 
-                                  ? Colors.red 
-                                  : colorScheme.primary.withOpacity(0.3),
-                              width: 2,
-                            ),
+                            borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
+                                color: Colors.black.withOpacity(0.06),
                                 blurRadius: 8,
                                 offset: const Offset(0, 2),
                               ),
@@ -476,9 +498,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     color: Colors.white,
                                     size: 24,
                                   ),
-                                  onPressed: _speechAvailable
-                                      ? _toggleListening
-                                      : null,
+                                  onPressed: _toggleListening,
                                   tooltip: _isListening
                                       ? 'Stop Recording'
                                       : 'Start Voice Input',
@@ -564,60 +584,71 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
 
-            // Suggested Questions (prominent, larger, friendly)
-            if (_followUpPrompts.isNotEmpty)
+            // Suggested questions: only before first user message (LLM-style; scroll off after use)
+            if (_messages.length == 1 && _followUpPrompts.isNotEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest.withOpacity(0.2),
-                  border: Border(
-                    bottom: BorderSide(color: Colors.grey.shade200, width: 1),
-                  ),
-                ),
+                color: const Color(0xFFFAFAFA),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Suggested Questions:',
+                      'Suggested questions',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.w600,
+                        color: const Color(0xFF64748B),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    ..._followUpPrompts.take(3).map((prompt) {
+                    const SizedBox(height: 10),
+                    ..._followUpPrompts.take(3).toList().asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final prompt = entry.value;
+                      final cardBgColors = [
+                        const Color(0xFFFFEBEE),
+                        const Color(0xFFF3E5F5),
+                        const Color(0xFFE8F5E9),
+                      ];
+                      final iconColors = [
+                        const Color(0xFFD32F2F),
+                        const Color(0xFF7B1FA2),
+                        const Color(0xFF388E3C),
+                      ];
+                      final bg = cardBgColors[i % cardBgColors.length];
+                      final iconColor = iconColors[i % iconColors.length];
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () => _handleFollowUpPrompt(prompt),
-                            icon: const Icon(
-                              Icons.lightbulb_outline,
-                              size: 18,
-                            ),
-                            label: Text(
-                              prompt,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              textAlign: TextAlign.left,
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 16,
-                              ),
-                              alignment: Alignment.centerLeft,
-                              backgroundColor: Colors.white,
-                              foregroundColor: colorScheme.primary,
-                              elevation: 1,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                side: BorderSide(
-                                  color: colorScheme.primary.withOpacity(0.3),
-                                ),
+                        child: Material(
+                          color: bg,
+                          borderRadius: BorderRadius.circular(20),
+                          elevation: 0,
+                          child: InkWell(
+                            onTap: () => _handleFollowUpPrompt(prompt),
+                            borderRadius: BorderRadius.circular(20),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: iconColor.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Icon(Icons.medical_services_outlined, size: 22, color: iconColor),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Text(
+                                      prompt,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w500,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -628,44 +659,63 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-            // Conversation Area (scrollable)
+            // Conversation thread (always one scrollable list, LLM-style)
             Expanded(
-              child: _messages.length <= 1
-                  ? Center(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(24),
+              child: Stack(
+                children: [
+                  ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 80),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final message = _messages[index];
+                      if (message['message'] == 'typing') {
+                        return const TypingIndicator();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
                         child: ConversationMessage(
-                          isUser: false,
-                          message: _messages.isNotEmpty
-                              ? _messages[0]['message'] as String
-                              : 'Hello! I\'m your MyWellWallet assistant. How can I help you with your health records today?',
-                          timestamp: DateTime.now(),
+                          isUser: message['isUser'] as bool,
+                          message: message['message'] as String,
+                          timestamp: message['timestamp'] as DateTime,
+                          isMarkdown: message['isMarkdown'] as bool? ?? false,
+                        ),
+                      );
+                    },
+                  ),
+                  // Scroll-to-bottom button (down arrow)
+                  if (_showScrollToBottom)
+                    Positioned(
+                      right: 16,
+                      bottom: 24,
+                      child: Material(
+                        elevation: 2,
+                        borderRadius: BorderRadius.circular(24),
+                        color: Colors.white,
+                        child: InkWell(
+                          onTap: () {
+                            if (_scrollController.hasClients) {
+                              _scrollController.animateTo(
+                                _scrollController.position.maxScrollExtent,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOut,
+                              );
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(24),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            child: Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 28,
+                              color: const Color(0xFF7B1FA2),
+                            ),
+                          ),
                         ),
                       ),
-                    )
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 16,
-                        horizontal: 20,
-                      ),
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
-                        final message = _messages[index];
-                        if (message['message'] == 'typing') {
-                          return const TypingIndicator();
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: ConversationMessage(
-                            isUser: message['isUser'] as bool,
-                            message: message['message'] as String,
-                            timestamp: message['timestamp'] as DateTime,
-                            isMarkdown: message['isMarkdown'] as bool? ?? false,
-                          ),
-                        );
-                      },
                     ),
+                ],
+              ),
             ),
           ],
         ),
@@ -679,29 +729,30 @@ class TypingIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
+            decoration: const BoxDecoration(
+              color: Color(0xFFE8E0F0),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.favorite_outline,
-              color: Colors.blue,
+            child: Icon(
+              Icons.medical_services_outlined,
+              color: Color(0xFF7B1FA2),
               size: 20,
             ),
           ),
           const SizedBox(width: 12),
-          const Text(
+          Text(
             'Working...',
             style: TextStyle(
               fontSize: 16,
               fontStyle: FontStyle.italic,
-              color: Colors.grey,
+              color: colorScheme.onSurface.withOpacity(0.6),
             ),
           ),
         ],
