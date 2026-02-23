@@ -12,7 +12,8 @@ class AppBottomNav extends StatelessWidget {
   final String currentPath;
 
   int get _selectedIndex {
-    if (currentPath == '/profile') return 2;
+    if (currentPath == '/profile') return 3;
+    if (currentPath.startsWith('/health')) return 2;
     if (currentPath == '/fetch-data') return 1;
     return 0;
   }
@@ -54,11 +55,19 @@ class AppBottomNav extends StatelessWidget {
                 },
               ),
               _NavItem(
-                icon: Icons.person_outline,
-                label: 'Profile',
+                icon: Icons.favorite_border,
+                label: 'Health',
                 selected: _selectedIndex == 2,
                 onTap: () {
-                  if (_selectedIndex != 2) context.go('/profile');
+                  if (_selectedIndex != 2) context.go('/health');
+                },
+              ),
+              _NavItem(
+                icon: Icons.person_outline,
+                label: 'Profile',
+                selected: _selectedIndex == 3,
+                onTap: () {
+                  if (_selectedIndex != 3) context.go('/profile');
                 },
               ),
             ],

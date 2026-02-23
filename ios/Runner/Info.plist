@@ -51,5 +51,9 @@
 	<string>MyWellWallet uses the microphone for voice input and speech recognition.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>MyWellWallet uses speech recognition to convert your voice to text.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>MyWellWallet reads your health data (glucose, heart rate, steps, blood pressure) to show you a diabetes and heart-health dashboard.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>MyWellWallet can save health data you enter into Apple Health.</string>
 </dict>
 </plist>

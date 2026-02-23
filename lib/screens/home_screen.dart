@@ -11,6 +11,7 @@ import '../providers/patient_provider.dart';
 import '../services/gemma_service.dart';
 import '../widgets/conversation_message.dart';
 import '../widgets/app_bottom_nav.dart';
+import '../widgets/app_bar_logo.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -46,7 +47,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
 
     _scrollController.addListener(_onScroll);
-    _initializeSpeech();
+    // Request microphone and speech (one place only) so the app appears in Settings > Privacy (iOS)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initializeSpeech());
     _checkAuthentication();
     _establishPatientContext();
     _addWelcomeMessage();
@@ -161,36 +163,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _initializeSpeech() async {
-    var status = await Permission.microphone.status;
-    if (!status.isGranted) {
-      status = await Permission.microphone.request();
+    // Request one at a time to avoid "already requesting permissions" on iOS
+    // Speech recognition (iOS: Settings > Privacy > Speech Recognition)
+    var speechStatus = await Permission.speech.status;
+    if (!speechStatus.isGranted) {
+      speechStatus = await Permission.speech.request();
     }
-    if (status.isGranted) {
-      final available = await _speech.initialize(
-        onStatus: (status) {
-          if (status == 'done' || status == 'notListening') {
-            if (mounted) setState(() => _isListening = false);
-          }
-        },
-        onError: (error) {
-          debugPrint('Speech recognition error: $error');
+    // Microphone (iOS: Settings > Privacy > Microphone)
+    var micStatus = await Permission.microphone.status;
+    if (!micStatus.isGranted) {
+      micStatus = await Permission.microphone.request();
+    }
+    // Initialize speech_to_text (triggers native Speech framework auth on iOS when needed)
+    final available = await _speech.initialize(
+      onStatus: (status) {
+        if (status == 'done' || status == 'notListening') {
           if (mounted) setState(() => _isListening = false);
-        },
-      );
-      if (mounted) setState(() => _speechAvailable = available);
-    }
+        }
+      },
+      onError: (error) {
+        debugPrint('Speech recognition error: $error');
+        if (mounted) setState(() => _isListening = false);
+      },
+    );
+    if (mounted) setState(() => _speechAvailable = available && micStatus.isGranted);
   }
 
   void _startListening() async {
     if (!_speechAvailable) {
       await _initializeSpeech();
       if (!_speechAvailable && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Voice input is not available. Check microphone and speech recognition permissions.'),
-            duration: Duration(seconds: 3),
-          ),
-        );
+        _showVoicePermissionDialog();
         return;
       }
     }
@@ -220,6 +223,58 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     setState(() {
       _isListening = false;
     });
+  }
+
+  void _showVoicePermissionDialog() {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Voice input not available'),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Voice input needs access to your microphone and speech recognition.',
+                style: TextStyle(height: 1.4),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'On iPhone:',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '1. Tap "Open Settings" below.\n'
+                '2. Tap Privacy & Security → Microphone (and Speech Recognition if listed).\n'
+                '3. Find MyWellWallet and turn it ON.',
+                style: TextStyle(height: 1.5),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'If MyWellWallet is not in the list, return to the app and tap the microphone icon once so the permission prompt appears, then check Settings again.',
+                style: TextStyle(height: 1.4, fontSize: 12, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await openAppSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _toggleListening() {
@@ -368,6 +423,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
+        leading: const AppBarLogo(showBackButton: false),
         title: const Text('MyWellWallet'),
         backgroundColor: Colors.white,
         elevation: 0,

@@ -9,6 +9,7 @@ import '../services/mcp_client.dart';
 import '../services/database_service.dart';
 import '../models/fetch_status.dart';
 import '../widgets/app_bottom_nav.dart';
+import '../widgets/app_bar_logo.dart';
 
 class FetchDataScreen extends StatefulWidget {
   const FetchDataScreen({super.key});
@@ -232,11 +233,8 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarLogo(showBackButton: true),
         title: const Text('Fetch My Health Data'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/'),
-        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),

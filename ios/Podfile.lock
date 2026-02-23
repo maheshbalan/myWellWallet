@@ -2,7 +2,11 @@ PODS:
   - CwlCatchException (2.2.1):
     - CwlCatchExceptionSupport (~> 2.2.1)
   - CwlCatchExceptionSupport (2.2.1)
+  - device_info_plus (0.0.1):
+    - Flutter
   - Flutter (1.0.0)
+  - health (13.3.1):
+    - Flutter
   - local_auth_darwin (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -23,7 +27,9 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
+  - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
   - Flutter (from `Flutter`)
+  - health (from `.symlinks/plugins/health/ios`)
   - local_auth_darwin (from `.symlinks/plugins/local_auth_darwin/darwin`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
@@ -37,8 +43,12 @@ SPEC REPOS:
     - CwlCatchExceptionSupport
 
 EXTERNAL SOURCES:
+  device_info_plus:
+    :path: ".symlinks/plugins/device_info_plus/ios"
   Flutter:
     :path: Flutter
+  health:
+    :path: ".symlinks/plugins/health/ios"
   local_auth_darwin:
     :path: ".symlinks/plugins/local_auth_darwin/darwin"
   path_provider_foundation:
@@ -55,7 +65,9 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   CwlCatchException: 7acc161b299a6de7f0a46a6ed741eae2c8b4d75a
   CwlCatchExceptionSupport: 54ccab8d8c78907b57f99717fb19d4cc3bce02dc
+  device_info_plus: bf2e3232933866d73fe290f2942f2156cdd10342
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  health: c1dfe8bc28ccd5998a32bdd0963943bfe9ac8320
   local_auth_darwin: fa4b06454df7df8e97c18d7ee55151c57e7af0de
   path_provider_foundation: 2b6b4c569c0fb62ec74538f866245ac84301af46
   permission_handler_apple: 9878588469a2b0d0fc1e048d9f43605f92e6cec2
@@ -63,6 +75,6 @@ SPEC CHECKSUMS:
   speech_to_text: 87bf9298952e8d9073be1b6aade6d5758db5170c
   sqflite_darwin: 5a7236e3b501866c1c9befc6771dfd73ffb8702d
 
-PODFILE CHECKSUM: 161f8ae55e6ff1941851ff59bad8fea0599288e7
+PODFILE CHECKSUM: d2cf08966dd7c6777f44f8c31501b630d1d1b83a
 
 COCOAPODS: 1.16.2

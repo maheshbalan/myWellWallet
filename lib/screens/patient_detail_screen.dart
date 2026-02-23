@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import '../providers/patient_provider.dart';
+import '../widgets/app_bar_logo.dart';
 import '../widgets/info_section.dart';
 
 class PatientDetailScreen extends StatefulWidget {
@@ -30,11 +31,8 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
     
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarLogo(showBackButton: true),
         title: const Text('Patient Details'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/patients'),
-        ),
       ),
       body: Consumer<PatientProvider>(
         builder: (context, provider, child) {

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:local_auth/local_auth.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/app_bar_logo.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -106,6 +107,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
+      appBar: AppBar(
+        leading: const AppBarLogo(showBackButton: false),
+        backgroundColor: Colors.white,
+        elevation: 0,
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -137,17 +143,17 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       child: Column(
                         children: [
-                        Container(
+                        SizedBox(
                           width: 100,
                           height: 100,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE8E0F0),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.favorite_outline,
-                            size: 48,
-                            color: Color(0xFF7B1FA2),
+                          child: Image.asset(
+                            'assets/icons/MyWellWallet.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.medical_services,
+                              size: 48,
+                              color: Color(0xFF7B1FA2),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 24),

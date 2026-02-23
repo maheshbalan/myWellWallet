@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/app_bar_logo.dart';
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
@@ -161,6 +162,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
+        leading: const AppBarLogo(showBackButton: false),
         title: const Text('Create Account'),
         automaticallyImplyLeading: false,
         backgroundColor: Colors.white,

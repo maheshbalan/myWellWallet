@@ -17,6 +17,11 @@ import 'screens/profile_screen.dart';
 import 'screens/patient_list_screen.dart';
 import 'screens/patient_detail_screen.dart';
 import 'screens/fetch_data_screen.dart';
+import 'screens/health_dashboard_screen.dart';
+import 'screens/health_glucose_screen.dart';
+import 'screens/health_heart_rate_screen.dart';
+import 'screens/health_steps_screen.dart';
+import 'screens/health_blood_pressure_screen.dart';
 import 'test/mcp_sse_test_screen.dart';
 
 void main() {
@@ -311,6 +316,26 @@ final GoRouter _router = GoRouter(
       builder: (context, state) {
         return const FetchDataScreen();
       },
+    ),
+    GoRoute(
+      path: '/health',
+      builder: (context, state) => const HealthDashboardScreen(),
+    ),
+    GoRoute(
+      path: '/health/glucose',
+      builder: (context, state) => const HealthGlucoseScreen(),
+    ),
+    GoRoute(
+      path: '/health/heart-rate',
+      builder: (context, state) => const HealthHeartRateScreen(),
+    ),
+    GoRoute(
+      path: '/health/steps',
+      builder: (context, state) => const HealthStepsScreen(),
+    ),
+    GoRoute(
+      path: '/health/blood-pressure',
+      builder: (context, state) => const HealthBloodPressureScreen(),
     ),
   ],
 );

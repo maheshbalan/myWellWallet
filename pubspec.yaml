@@ -53,6 +53,9 @@ dependencies:
   # Note: Using a service-based approach that can integrate with native LLM libraries
   path_provider: ^2.1.1
 
+  # Apple Health / HealthKit (iOS) — CGM, heart rate, steps, blood pressure
+  health: ^13.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

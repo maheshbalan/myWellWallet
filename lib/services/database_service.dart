@@ -26,7 +26,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -91,12 +91,74 @@ class DatabaseService {
     await db.execute('CREATE INDEX idx_fhir_resources_patient_id ON fhir_resources(patient_id)');
     await db.execute('CREATE INDEX idx_fhir_resources_type ON fhir_resources(resource_type)');
     await db.execute('CREATE INDEX idx_fetch_summaries_patient_id ON fetch_summaries(patient_id)');
+
+    await _createHealthTables(db);
+  }
+
+  Future<void> _createHealthTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE health_glucose (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        value_real REAL NOT NULL,
+        unit TEXT NOT NULL DEFAULT 'mg/dL',
+        source_bundle_id TEXT,
+        recorded_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE health_heart_rate (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        value_real REAL NOT NULL,
+        unit TEXT NOT NULL DEFAULT 'bpm',
+        source_bundle_id TEXT,
+        recorded_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE health_steps (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        count INTEGER NOT NULL,
+        distance_meters REAL,
+        start_at TEXT NOT NULL,
+        end_at TEXT NOT NULL,
+        source_bundle_id TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE health_blood_pressure (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        systolic_real REAL NOT NULL,
+        diastolic_real REAL NOT NULL,
+        unit TEXT NOT NULL DEFAULT 'mmHg',
+        source_bundle_id TEXT,
+        recorded_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE health_sync_settings (
+        user_id TEXT PRIMARY KEY,
+        sync_interval_hours INTEGER NOT NULL DEFAULT 24,
+        last_synced_at TEXT,
+        connected_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_health_glucose_user_recorded ON health_glucose(user_id, recorded_at DESC)');
+    await db.execute('CREATE INDEX idx_health_heart_rate_user_recorded ON health_heart_rate(user_id, recorded_at DESC)');
+    await db.execute('CREATE INDEX idx_health_steps_user_created ON health_steps(user_id, created_at DESC)');
+    await db.execute('CREATE INDEX idx_health_blood_pressure_user_recorded ON health_blood_pressure(user_id, recorded_at DESC)');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Handle database migrations here
     if (oldVersion < 2) {
-      // Add fetch_summaries table
       await db.execute('''
         CREATE TABLE IF NOT EXISTS fetch_summaries (
           id TEXT PRIMARY KEY,
@@ -110,6 +172,9 @@ class DatabaseService {
         )
       ''');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_fetch_summaries_patient_id ON fetch_summaries(patient_id)');
+    }
+    if (oldVersion < 3) {
+      await _createHealthTables(db);
     }
   }
 
@@ -388,6 +453,222 @@ class DatabaseService {
       counts[map['resource_type'] as String] = map['count'] as int;
     }
     return counts;
+  }
+
+  // ========== Apple Health Methods ==========
+
+  /// Save or update health sync settings for a user
+  Future<void> saveHealthSyncSettings({
+    required String userId,
+    required int syncIntervalHours,
+    DateTime? lastSyncedAt,
+    required DateTime connectedAt,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    await db.insert(
+      'health_sync_settings',
+      {
+        'user_id': userId,
+        'sync_interval_hours': syncIntervalHours,
+        'last_synced_at': lastSyncedAt?.toIso8601String(),
+        'connected_at': connectedAt.toIso8601String(),
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Get health sync settings for a user
+  Future<Map<String, dynamic>?> getHealthSyncSettings(String userId) async {
+    final db = await database;
+    final maps = await db.query(
+      'health_sync_settings',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    final m = maps.first;
+    return {
+      'user_id': m['user_id'],
+      'sync_interval_hours': m['sync_interval_hours'] as int,
+      'last_synced_at': m['last_synced_at'] != null ? DateTime.tryParse(m['last_synced_at'] as String) : null,
+      'connected_at': DateTime.parse(m['connected_at'] as String),
+      'updated_at': DateTime.parse(m['updated_at'] as String),
+    };
+  }
+
+  /// Update last synced time for health
+  Future<void> updateHealthLastSynced(String userId) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    await db.update(
+      'health_sync_settings',
+      {'last_synced_at': now, 'updated_at': now},
+      where: 'user_id = ?',
+      whereArgs: [userId],
+    );
+  }
+
+  /// Insert glucose readings (replace by id to avoid duplicates from Health)
+  Future<void> insertHealthGlucose(String userId, List<Map<String, dynamic>> readings) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    for (final r in readings) {
+      await db.insert(
+        'health_glucose',
+        {
+          'id': r['id'] as String,
+          'user_id': userId,
+          'value_real': r['value'] as num,
+          'unit': r['unit'] as String? ?? 'mg/dL',
+          'source_bundle_id': r['source_bundle_id'],
+          'recorded_at': (r['recorded_at'] as DateTime).toIso8601String(),
+          'created_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  /// Insert heart rate readings
+  Future<void> insertHealthHeartRate(String userId, List<Map<String, dynamic>> readings) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    for (final r in readings) {
+      await db.insert(
+        'health_heart_rate',
+        {
+          'id': r['id'] as String,
+          'user_id': userId,
+          'value_real': r['value'] as num,
+          'unit': r['unit'] as String? ?? 'bpm',
+          'source_bundle_id': r['source_bundle_id'],
+          'recorded_at': (r['recorded_at'] as DateTime).toIso8601String(),
+          'created_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  /// Insert steps entries
+  Future<void> insertHealthSteps(String userId, List<Map<String, dynamic>> entries) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    for (final e in entries) {
+      await db.insert(
+        'health_steps',
+        {
+          'id': e['id'] as String,
+          'user_id': userId,
+          'count': e['count'] as int,
+          'distance_meters': e['distance_meters'],
+          'start_at': (e['start_at'] as DateTime).toIso8601String(),
+          'end_at': (e['end_at'] as DateTime).toIso8601String(),
+          'source_bundle_id': e['source_bundle_id'],
+          'created_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  /// Insert blood pressure readings
+  Future<void> insertHealthBloodPressure(String userId, List<Map<String, dynamic>> readings) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    for (final r in readings) {
+      await db.insert(
+        'health_blood_pressure',
+        {
+          'id': r['id'] as String,
+          'user_id': userId,
+          'systolic_real': r['systolic'] as num,
+          'diastolic_real': r['diastolic'] as num,
+          'unit': r['unit'] as String? ?? 'mmHg',
+          'source_bundle_id': r['source_bundle_id'],
+          'recorded_at': (r['recorded_at'] as DateTime).toIso8601String(),
+          'created_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  /// Get latest glucose readings for user
+  Future<List<Map<String, dynamic>>> getHealthGlucose(String userId, {int limit = 100}) async {
+    final db = await database;
+    final maps = await db.query(
+      'health_glucose',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'recorded_at DESC',
+      limit: limit,
+    );
+    return maps.map((m) => {
+      'id': m['id'],
+      'value': m['value_real'] as num,
+      'unit': m['unit'],
+      'recorded_at': DateTime.parse(m['recorded_at'] as String),
+    }).toList();
+  }
+
+  /// Get latest heart rate readings
+  Future<List<Map<String, dynamic>>> getHealthHeartRate(String userId, {int limit = 100}) async {
+    final db = await database;
+    final maps = await db.query(
+      'health_heart_rate',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'recorded_at DESC',
+      limit: limit,
+    );
+    return maps.map((m) => {
+      'id': m['id'],
+      'value': m['value_real'] as num,
+      'unit': m['unit'],
+      'recorded_at': DateTime.parse(m['recorded_at'] as String),
+    }).toList();
+  }
+
+  /// Get steps entries (e.g. daily aggregates)
+  Future<List<Map<String, dynamic>>> getHealthSteps(String userId, {int limit = 60}) async {
+    final db = await database;
+    final maps = await db.query(
+      'health_steps',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+    return maps.map((m) => {
+      'id': m['id'],
+      'count': m['count'] as int,
+      'distance_meters': m['distance_meters'] != null ? (m['distance_meters'] as num).toDouble() : null,
+      'start_at': DateTime.parse(m['start_at'] as String),
+      'end_at': DateTime.parse(m['end_at'] as String),
+    }).toList();
+  }
+
+  /// Get latest blood pressure readings
+  Future<List<Map<String, dynamic>>> getHealthBloodPressure(String userId, {int limit = 100}) async {
+    final db = await database;
+    final maps = await db.query(
+      'health_blood_pressure',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'recorded_at DESC',
+      limit: limit,
+    );
+    return maps.map((m) => {
+      'id': m['id'],
+      'systolic': m['systolic_real'] as num,
+      'diastolic': m['diastolic_real'] as num,
+      'unit': m['unit'],
+      'recorded_at': DateTime.parse(m['recorded_at'] as String),
+    }).toList();
   }
 
   /// Close database

@@ -73,6 +73,32 @@ class AuthProvider with ChangeNotifier {
   Future<void> setPin(String pin) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_pin', pin);
+    notifyListeners();
+  }
+
+  /// Whether biometric login is enabled (from Profile or registration).
+  Future<bool> isBiometricEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('biometric_enabled') ?? false;
+  }
+
+  /// Enable or disable biometric login. Does not clear PIN.
+  Future<void> setBiometricEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('biometric_enabled', value);
+    notifyListeners();
+  }
+
+  /// Whether the device supports biometric authentication.
+  Future<bool> isDeviceBiometricSupported() async {
+    return _localAuth.isDeviceSupported();
+  }
+
+  /// Whether biometric hardware is available (e.g. Face ID / Touch ID).
+  Future<bool> hasBiometricHardware() async {
+    if (!await _localAuth.isDeviceSupported()) return false;
+    final list = await _localAuth.getAvailableBiometrics();
+    return list.isNotEmpty;
   }
 
   /// Update user profile
@@ -229,16 +255,10 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// Logout
+  /// Logout (keeps PIN and biometric preference so user can log in again with either)
   Future<void> logout() async {
     _isAuthenticated = false;
     _currentUser = null;
-    
-    // Clear biometric flag from SharedPreferences (keep user in database)
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('biometric_enabled');
-    await prefs.remove('user_pin');
-    
     notifyListeners();
   }
 

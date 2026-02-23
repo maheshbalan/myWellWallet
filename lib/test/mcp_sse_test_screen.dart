@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/mcp_client_sse.dart';
-import '../models/patient.dart';
+import '../widgets/app_bar_logo.dart';
 
 /// Test screen for MCP SSE connection with hardcoded values
 class MCPSSETestScreen extends StatefulWidget {
@@ -132,11 +132,8 @@ class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
     
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarLogo(showBackButton: true),
         title: const Text('MCP SSE Connection Test'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/'),
-        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

@@ -240,6 +240,97 @@ final allResources = await db.getAllPatientResources(patientId);
 final bundle = await db.getPatientBundle(patientId);
 ```
 
+## Apple Health Tables (Diabetes & Heart-Centric)
+
+Used when Apple Health is connected (iOS). All tables are keyed by `user_id` (app user, not FHIR patient).
+
+### 4. `health_glucose`
+
+CGM / blood glucose readings (mg/dL).
+
+```sql
+CREATE TABLE health_glucose (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  value_real REAL NOT NULL,
+  unit TEXT NOT NULL DEFAULT 'mg/dL',
+  source_bundle_id TEXT,
+  recorded_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)
+```
+
+- `recorded_at`: When the reading was taken (ISO 8601).
+- Index: `idx_health_glucose_user_recorded ON health_glucose(user_id, recorded_at DESC)`.
+
+### 5. `health_heart_rate`
+
+Heart rate in beats per minute.
+
+```sql
+CREATE TABLE health_heart_rate (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  value_real REAL NOT NULL,
+  unit TEXT NOT NULL DEFAULT 'bpm',
+  source_bundle_id TEXT,
+  recorded_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)
+```
+
+### 6. `health_steps`
+
+Step count (and optional distance) for a time interval.
+
+```sql
+CREATE TABLE health_steps (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  count INTEGER NOT NULL,
+  distance_meters REAL,
+  start_at TEXT NOT NULL,
+  end_at TEXT NOT NULL,
+  source_bundle_id TEXT,
+  created_at TEXT NOT NULL
+)
+```
+
+### 7. `health_blood_pressure`
+
+Systolic and diastolic (mmHg).
+
+```sql
+CREATE TABLE health_blood_pressure (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  systolic_real REAL NOT NULL,
+  diastolic_real REAL NOT NULL,
+  unit TEXT NOT NULL DEFAULT 'mmHg',
+  source_bundle_id TEXT,
+  recorded_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)
+```
+
+### 8. `health_sync_settings`
+
+Per-user Apple Health connection and sync interval.
+
+```sql
+CREATE TABLE health_sync_settings (
+  user_id TEXT PRIMARY KEY,
+  sync_interval_hours INTEGER NOT NULL DEFAULT 24,
+  last_synced_at TEXT,
+  connected_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)
+```
+
+- `sync_interval_hours`: 6, 24, 168 (weekly), etc.
+- `last_synced_at`: Last successful sync (ISO 8601).
+- `connected_at`: When the user connected Apple Health.
+
 ## Notes
 
 1. **JSON Storage**: All FHIR resources are stored as JSON strings. Use `jsonDecode()` to parse.
