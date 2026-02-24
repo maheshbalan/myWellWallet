@@ -20,6 +20,8 @@ MyWellWallet is a healthcare application that provides a clean, modern interface
 
 - 🎨 **Bauhaus-Inspired Design**: Clean, geometric, and calming UI perfect for healthcare applications
 - 🔒 **FHIR Compliant**: Secure integration with FHIR-compliant health systems
+- 🩺 **Apple Health (iOS)**: Health dashboard with glucose (CGM), heart rate, steps, and blood pressure synced from Apple Health
+- 🎙️ **Voice Assistant**: Speech-to-text on the Home screen to ask questions about your health data
 - 🚀 **Modern Architecture**: Built with Flutter and Material Design 3
 - 📊 **Patient Management**: View patient lists and detailed health information
 - 🌐 **MCP Integration**: Seamless connection to FHIR MCP Server via HTTP/SSE
@@ -39,6 +41,29 @@ MyWellWallet is a healthcare application that provides a clean, modern interface
 - **Real-time Data**: Connect to live FHIR MCP Server for up-to-date information
 - **Error Handling**: Graceful error states with retry functionality
 - **Pull-to-Refresh**: Easy data refresh with intuitive gestures
+
+### Health & Apple Health (iOS)
+
+- **Health Dashboard**: Dedicated `Health` tab summarizing:
+  - Glucose (CGM)
+  - Heart rate
+  - Steps
+  - Blood pressure
+- **Detail Screens**: Individual views for each metric with trend cards and reading history.
+- **Apple Health Sync**:
+  - Connect from the **Profile → Apple Health** section.
+  - Configurable sync interval (e.g., every 6/12/24 hours, weekly).
+  - Data is stored locally in SQLite tables documented in `assets/docs/SQLITE_SCHEMA.md`.
+- **Setup Guide**: See `docs/APPLE_HEALTH_SETUP.md` for HealthKit entitlements and iOS-specific setup.
+
+### Voice Assistant
+
+- **Speech-to-Text Input**: Tap the microphone on the Home screen to dictate your question.
+- **Health-Aware Queries**: Voice queries are sent through the MCP/Gemma pipeline with patient context.
+- **Permissions**:
+  - Uses `permission_handler` with `Permission.microphone` and `Permission.speech`.
+  - iOS `Info.plist` includes `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`.
+  - Podfile enables `PERMISSION_MICROPHONE` and `PERMISSION_SPEECH_RECOGNIZER` for iOS builds.
 
 ### Design Features
 
@@ -76,22 +101,31 @@ MyWellWallet follows Bauhaus design principles adapted for healthcare:
 
 ```
 lib/
-├── main.dart                    # App entry point, routing, and theme configuration
-├── models/                      # Data models
-│   ├── patient.dart            # Patient model with FHIR resource mapping
-│   └── patient.g.dart          # Generated JSON serialization
-├── services/                    # External service integrations
-│   └── mcp_client.dart         # FHIR MCP Server client (HTTP/SSE)
-├── providers/                   # State management (Provider pattern)
-│   └── patient_provider.dart   # Patient data state management
-├── screens/                     # UI screens
-│   ├── home_screen.dart        # Welcome/home screen
-│   ├── patient_list_screen.dart # Patient list view
-│   └── patient_detail_screen.dart # Patient detail view
-└── widgets/                     # Reusable UI components
-    ├── patient_card.dart       # Patient list item card
-    └── info_section.dart       # Information section widget
-```
+├── main.dart                     # App entry point, routing, and theme configuration
+├── models/                       # Data models (Patient, User, FetchStatus, etc.)
+├── services/                     # External + local service integrations
+│   ├── mcp_client.dart           # FHIR MCP Server client (HTTP/SSE)
+│   ├── apple_health_service.dart # Apple Health / HealthKit integration (iOS)
+│   ├── database_service.dart     # SQLite database service
+│   └── data_sync_service.dart    # Patient/health data sync orchestration
+├── providers/                    # State management (Provider pattern)
+│   ├── auth_provider.dart        # Authentication and current user
+│   ├── patient_provider.dart     # Patient and local FHIR data state
+│   └── query_provider.dart       # Conversation and query state for MCP/Gemma
+├── screens/                      # UI screens
+│   ├── home_screen.dart          # Home + voice assistant entry point
+│   ├── login_screen.dart         # Authentication
+│   ├── registration_screen.dart  # Account creation
+│   ├── patient_list_screen.dart  # Patient list view
+│   ├── patient_detail_screen.dart# Patient detail view
+│   ├── profile_screen.dart       # Profile, Apple Health connection, sync interval
+│   └── health_*.dart             # Health dashboard + detail screens (glucose, heart rate, steps, BP)
+└── widgets/                      # Reusable UI components
+    ├── patient_card.dart         # Patient list item card
+    ├── info_section.dart         # Information section widget
+    ├── conversation_message.dart # Chat-style messages for the assistant
+    ├── app_bottom_nav.dart       # Bottom navigation bar (Home / Health / Profile)
+    └── app_bar_logo.dart         # App bar logo with optional back navigation
 
 ### Technology Stack
 
@@ -178,6 +212,14 @@ final mCPClient = MCPClient(
   baseUrl: 'YOUR_SERVER_URL_HERE',
 );
 ```
+
+### Apple Health (iOS)
+
+- HealthKit entitlements and Info.plist keys are preconfigured for Apple Health.
+- Follow `docs/APPLE_HEALTH_SETUP.md` to:
+  - Ensure the **HealthKit** capability is enabled in Xcode.
+  - Connect to Apple Health from **Profile → Apple Health**.
+  - Choose a sync interval and run the first sync to populate the Health dashboard.
 
 ### App Icon
 
@@ -342,7 +384,7 @@ flutter pub run build_runner build --delete-conflicting-outputs
 ## 🔒 Security & Privacy
 
 - **HTTPS**: All communications use secure HTTPS connections
-- **No Local Storage**: Patient data is not stored locally
+- **Local-First Storage**: Patient and Apple Health data are stored locally in SQLite; nothing is sent to external servers unless you explicitly add that behavior
 - **FHIR Compliance**: Follows FHIR security best practices
 - **Session Management**: Secure session handling with MCP server
 
