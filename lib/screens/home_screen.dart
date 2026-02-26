@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _micAnimationController;
   late Animation<double> _micAnimation;
   bool _showScrollToBottom = false;
+  Timer? _noSpeechTimer;
 
   @override
   void initState() {
@@ -201,9 +203,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (!mounted) return;
     setState(() => _isListening = true);
 
+    // Apple-like: timeout if no speech within 6 seconds
+    _noSpeechTimer?.cancel();
+    _noSpeechTimer = Timer(const Duration(seconds: 6), () {
+      if (!mounted) return;
+      if (_isListening && _queryController.text.trim().isEmpty) {
+        _stopListening();
+      }
+    });
+
     await _speech.listen(
       onResult: (result) {
         if (!mounted) return;
+        if (result.recognizedWords.isNotEmpty) {
+          _noSpeechTimer?.cancel();
+          _noSpeechTimer = null;
+        }
         setState(() => _queryController.text = result.recognizedWords);
         if (result.finalResult) {
           _speech.stop();
@@ -212,13 +227,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           if (text.isNotEmpty) _processQuery();
         }
       },
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 5),
+      listenFor: const Duration(seconds: 20),
+      pauseFor: const Duration(seconds: 3),
       partialResults: true,
     );
   }
 
   void _stopListening() {
+    _noSpeechTimer?.cancel();
+    _noSpeechTimer = null;
     _speech.stop();
     setState(() {
       _isListening = false;
@@ -408,6 +425,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _noSpeechTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _queryController.dispose();
     _scrollController.dispose();
@@ -535,7 +553,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   enabled: !_isListening,
                                 ),
                               ),
-                              // Microphone button - Clean Health UI Kit style
+                              // Microphone button: clearly different when on vs off
                               Container(
                                 margin: const EdgeInsets.only(right: 8),
                                 width: 48,
@@ -543,21 +561,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 decoration: BoxDecoration(
                                   color: _isListening
                                       ? Colors.red
-                                      : colorScheme.primary,
+                                      : Colors.grey.shade400,
                                   shape: BoxShape.circle,
+                                  boxShadow: _isListening
+                                      ? [
+                                          BoxShadow(
+                                            color: Colors.red.withOpacity(0.5),
+                                            blurRadius: 10,
+                                            spreadRadius: 1,
+                                          ),
+                                        ]
+                                      : null,
                                 ),
                                 child: IconButton(
                                   icon: Icon(
-                                    _isListening
-                                        ? Icons.stop_circle_outlined
-                                        : Icons.mic_outlined,
+                                    _isListening ? Icons.mic : Icons.mic_outlined,
                                     color: Colors.white,
-                                    size: 24,
+                                    size: 26,
                                   ),
                                   onPressed: _toggleListening,
                                   tooltip: _isListening
-                                      ? 'Stop Recording'
-                                      : 'Start Voice Input',
+                                      ? 'Stop'
+                                      : 'Voice input',
                                 ),
                               ),
                             ],
@@ -593,49 +618,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ],
                   ),
                   
-                  // Recording indicator (if listening)
-                  if (_isListening)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 10,
-                          horizontal: 16,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.red, width: 2),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AnimatedBuilder(
-                              animation: _micAnimation,
-                              builder: (context, child) {
-                                return Transform.scale(
-                                  scale: _micAnimation.value,
-                                  child: const Icon(
-                                    Icons.mic_outlined,
-                                    color: Colors.red,
-                                    size: 20,
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 12),
-                            const Text(
-                              'Recording... Tap microphone to stop',
-                              style: TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),

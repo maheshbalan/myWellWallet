@@ -75,10 +75,11 @@ flutter:
     - docs/README_MOBILE_CLIENT.md
     - docs/FHIR_MCP_SERVER_README.md
 
-# App Icon Configuration
+# App Icon Configuration (iOS requires no transparency for App Store)
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/icons/MyWellWallet.png"
+  image_path_ios: "assets/icons/MyWellWallet_opaque.png"
   adaptive_icon_background: "#4A90E2"
   adaptive_icon_foreground: "assets/icons/MyWellWallet.png"

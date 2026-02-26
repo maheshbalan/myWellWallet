@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -24,6 +26,18 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>MyWellWallet uses Face ID to securely sign you in.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>MyWellWallet reads your health data (glucose, heart rate, steps, blood pressure) to show you a diabetes and heart-health dashboard.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>MyWellWallet can save health data you enter into Apple Health.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>MyWellWallet uses the microphone for voice input and speech recognition.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>MyWellWallet uses speech recognition to convert your voice to text.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -41,19 +55,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>NSFaceIDUsageDescription</key>
-	<string>MyWellWallet uses Face ID to securely sign you in.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>MyWellWallet uses the microphone for voice input and speech recognition.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>MyWellWallet uses speech recognition to convert your voice to text.</string>
-	<key>NSHealthShareUsageDescription</key>
-	<string>MyWellWallet reads your health data (glucose, heart rate, steps, blood pressure) to show you a diabetes and heart-health dashboard.</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>MyWellWallet can save health data you enter into Apple Health.</string>
 </dict>
 </plist>
