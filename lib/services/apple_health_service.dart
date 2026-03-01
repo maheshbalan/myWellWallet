@@ -5,6 +5,9 @@ import 'database_service.dart';
 
 /// Apple Health (HealthKit) integration for iOS.
 /// Fetches CGM, heart rate, steps, and blood pressure for diabetes & heart-centric dashboard.
+/// Blood test / lab results (e.g. Quest, Sonora Quest) are stored in [health_lab_results].
+/// When HealthKit Clinical Records (labResultRecord) is supported by the plugin or a platform
+/// channel, request that type and insert into health_lab_results via [DatabaseService.insertHealthLabResults].
 class AppleHealthService {
   AppleHealthService({DatabaseService? databaseService})
       : _db = databaseService ?? DatabaseService();

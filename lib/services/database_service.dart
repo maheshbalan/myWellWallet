@@ -26,7 +26,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -155,6 +155,28 @@ class DatabaseService {
     await db.execute('CREATE INDEX idx_health_heart_rate_user_recorded ON health_heart_rate(user_id, recorded_at DESC)');
     await db.execute('CREATE INDEX idx_health_steps_user_created ON health_steps(user_id, created_at DESC)');
     await db.execute('CREATE INDEX idx_health_blood_pressure_user_recorded ON health_blood_pressure(user_id, recorded_at DESC)');
+
+    // Blood test / lab results (e.g. from Apple Health Clinical Records, Quest/Sonora Quest, or FHIR)
+    await db.execute('''
+      CREATE TABLE health_lab_results (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        loinc_code TEXT,
+        value_numeric REAL,
+        value_string TEXT,
+        unit TEXT,
+        reference_range_low REAL,
+        reference_range_high REAL,
+        reference_range_text TEXT,
+        source_name TEXT,
+        source_bundle_id TEXT,
+        specimen_type TEXT,
+        recorded_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_health_lab_results_user_recorded ON health_lab_results(user_id, recorded_at DESC)');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -175,6 +197,28 @@ class DatabaseService {
     }
     if (oldVersion < 3) {
       await _createHealthTables(db);
+    }
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS health_lab_results (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          loinc_code TEXT,
+          value_numeric REAL,
+          value_string TEXT,
+          unit TEXT,
+          reference_range_low REAL,
+          reference_range_high REAL,
+          reference_range_text TEXT,
+          source_name TEXT,
+          source_bundle_id TEXT,
+          specimen_type TEXT,
+          recorded_at TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_health_lab_results_user_recorded ON health_lab_results(user_id, recorded_at DESC)');
     }
   }
 
@@ -667,6 +711,64 @@ class DatabaseService {
       'systolic': m['systolic_real'] as num,
       'diastolic': m['diastolic_real'] as num,
       'unit': m['unit'],
+      'recorded_at': DateTime.parse(m['recorded_at'] as String),
+    }).toList();
+  }
+
+  /// Insert lab / blood test results (e.g. from Apple Health or FHIR Observation)
+  Future<void> insertHealthLabResults(String userId, List<Map<String, dynamic>> results) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    for (final r in results) {
+      await db.insert(
+        'health_lab_results',
+        {
+          'id': r['id'] as String,
+          'user_id': userId,
+          'name': r['name'] as String,
+          'loinc_code': r['loinc_code'],
+          'value_numeric': r['value_numeric'],
+          'value_string': r['value_string'],
+          'unit': r['unit'],
+          'reference_range_low': r['reference_range_low'],
+          'reference_range_high': r['reference_range_high'],
+          'reference_range_text': r['reference_range_text'],
+          'source_name': r['source_name'],
+          'source_bundle_id': r['source_bundle_id'],
+          'specimen_type': r['specimen_type'],
+          'recorded_at': (r['recorded_at'] is DateTime)
+              ? (r['recorded_at'] as DateTime).toIso8601String()
+              : r['recorded_at'] as String,
+          'created_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  /// Get blood test / lab results for user in decreasing chronological order
+  Future<List<Map<String, dynamic>>> getHealthLabResults(String userId, {int limit = 200}) async {
+    final db = await database;
+    final maps = await db.query(
+      'health_lab_results',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'recorded_at DESC',
+      limit: limit,
+    );
+    return maps.map((m) => {
+      'id': m['id'],
+      'name': m['name'] as String,
+      'loinc_code': m['loinc_code'] as String?,
+      'value_numeric': m['value_numeric'] != null ? (m['value_numeric'] as num).toDouble() : null,
+      'value_string': m['value_string'] as String?,
+      'unit': m['unit'] as String?,
+      'reference_range_low': m['reference_range_low'] != null ? (m['reference_range_low'] as num).toDouble() : null,
+      'reference_range_high': m['reference_range_high'] != null ? (m['reference_range_high'] as num).toDouble() : null,
+      'reference_range_text': m['reference_range_text'] as String?,
+      'source_name': m['source_name'] as String?,
+      'source_bundle_id': m['source_bundle_id'] as String?,
+      'specimen_type': m['specimen_type'] as String?,
       'recorded_at': DateTime.parse(m['recorded_at'] as String),
     }).toList();
   }

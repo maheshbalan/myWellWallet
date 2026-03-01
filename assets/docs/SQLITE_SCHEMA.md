@@ -238,6 +238,9 @@ final allResources = await db.getAllPatientResources(patientId);
 
 // Get patient bundle
 final bundle = await db.getPatientBundle(patientId);
+
+// Get blood test / lab results (decreasing chronological order)
+final labResults = await db.getHealthLabResults(userId);
 ```
 
 ## Apple Health Tables (Diabetes & Heart-Centric)
@@ -331,6 +334,55 @@ CREATE TABLE health_sync_settings (
 - `last_synced_at`: Last successful sync (ISO 8601).
 - `connected_at`: When the user connected Apple Health.
 
+### 9. `health_lab_results`
+
+Blood test / lab results (e.g. from Apple Health Clinical Records, Quest, Sonora Quest, or imported from FHIR Observation).
+
+```sql
+CREATE TABLE health_lab_results (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  loinc_code TEXT,
+  value_numeric REAL,
+  value_string TEXT,
+  unit TEXT,
+  reference_range_low REAL,
+  reference_range_high REAL,
+  reference_range_text TEXT,
+  source_name TEXT,
+  source_bundle_id TEXT,
+  specimen_type TEXT,
+  recorded_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)
+```
+
+**Columns:**
+- `id`: Unique row identifier (e.g. source + timestamp).
+- `user_id`: App user (same as other health_* tables).
+- `name`: Test name (e.g. "Total Cholesterol", "Glucose").
+- `loinc_code`: Optional LOINC code.
+- `value_numeric` / `value_string`: Result value (use one).
+- `unit`: Unit of measure (e.g. mg/dL, mmol/L).
+- `reference_range_*`: Normal range (numeric low/high or text).
+- `source_name`: Lab or app name (e.g. "Quest", "Sonora Quest").
+- `source_bundle_id`: HealthKit source identifier when from Apple Health.
+- `specimen_type`: Optional (e.g. blood, serum).
+- `recorded_at`: When the sample was taken (ISO 8601).
+- `created_at`: When the row was inserted.
+
+**Index:**
+- `idx_health_lab_results_user_recorded` on `(user_id, recorded_at DESC)` for chronological queries.
+
+**Query example – blood test results in decreasing chronological order:**
+```sql
+SELECT * FROM health_lab_results
+WHERE user_id = ?
+ORDER BY recorded_at DESC
+LIMIT 200;
+```
+
 ## Notes
 
 1. **JSON Storage**: All FHIR resources are stored as JSON strings. Use `jsonDecode()` to parse.
@@ -344,4 +396,6 @@ CREATE TABLE health_sync_settings (
 5. **JSON Functions**: SQLite 3.38+ supports JSON functions. For older versions, parse JSON in Dart code.
 
 6. **Pagination**: Use `LIMIT` and `OFFSET` for pagination when dealing with large result sets.
+
+7. **Lab results**: The `health_lab_results` table stores blood test results (e.g. from Apple Health Clinical Records or Quest/Sonora Quest). The Health UI shows them in **decreasing chronological order** (newest first). Populate via `DatabaseService.insertHealthLabResults` when the HealthKit lab result type is available or when importing from FHIR Observation (category laboratory).
 

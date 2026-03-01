@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'local_rag_service.dart';
 import 'local_query_service.dart';
 import 'database_service.dart';
+import 'gemma_model_service.dart';
 
 /// Gemma RAG Service - Conversational query processing with RAG context
 /// 
@@ -364,9 +365,20 @@ Plan: {
     // Build prompt for result formatting
     final prompt = _buildFormattingPrompt(resources, resourceType, queryPlan);
     
-    // For now, use LocalQueryService formatting
-    // In production, this would call Gemma 2B
-    final markdown = _queryService.formatAsMarkdown(resources, resourceType);
+    // Try to use on-device Gemma (via GemmaModelService) if configured.
+    String? markdown;
+    try {
+      final gemma = GemmaModelService.instance;
+      if (gemma.isConfigured) {
+        markdown = await gemma.generate(prompt);
+      }
+    } catch (e, st) {
+      debugPrint('GemmaRAGService: Gemma model formatting failed: $e');
+      debugPrint('$st');
+    }
+
+    // Fallback to LocalQueryService formatting if Gemma is not available.
+    markdown ??= _queryService.formatAsMarkdown(resources, resourceType);
     
     // Enhance with conversational context
     return _enhanceMarkdownWithContext(markdown, resources, resourceType);

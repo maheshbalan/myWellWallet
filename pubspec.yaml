@@ -56,6 +56,9 @@ dependencies:
   # Apple Health / HealthKit (iOS) — CGM, heart rate, steps, blood pressure
   health: ^13.0.0
 
+  # On-device LLM runtime (GGUF) for Gemma 2B / Med-Gemma
+  llamadart: ^0.6.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
