@@ -132,8 +132,21 @@ class _MCPSSETestScreenState extends State<MCPSSETestScreen> {
     
     return Scaffold(
       appBar: AppBar(
-        leading: const AppBarLogo(showBackButton: true),
-        title: const Text('MCP SSE Connection Test'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.pop(),
+        ),
+        title: Row(
+          children: [
+            Image.asset(
+              'assets/icons/MyWellWallet.png',
+              height: 28,
+              errorBuilder: (_, __, ___) => const Icon(Icons.medical_services, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('MCP SSE Connection Test'),
+          ],
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

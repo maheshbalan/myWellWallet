@@ -601,7 +601,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
-        leading: const AppBarLogo(showBackButton: true),
+        leading: const AppBarLogo(showBackButton: false),
         title: const Text('Profile'),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -843,10 +843,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 24),
               _buildAppleHealthSection(),
             ],
+
+            const SizedBox(height: 48),
+            // Danger Zone
+            const Divider(),
+            const SizedBox(height: 24),
+            Text(
+              'Danger Zone',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: colorScheme.error,
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              color: colorScheme.errorContainer.withOpacity(0.3),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: colorScheme.error.withOpacity(0.2)),
+              ),
+              child: ListTile(
+                title: const Text('Delete Local Account'),
+                subtitle: const Text('This will clear all local health data and reset the app.'),
+                trailing: Icon(Icons.delete_forever_outlined, color: colorScheme.error),
+                onTap: () => _showDeleteAccountDialog(context),
+              ),
+            ),
+            const SizedBox(height: 40),
           ],
         ),
       ),
       bottomNavigationBar: const AppBottomNav(currentPath: '/profile'),
+    );
+  }
+
+  void _showDeleteAccountDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Local Account?'),
+        content: const Text(
+          'This will permanently delete your local profile and all synced FHIR health records. You will need to register again to use the app.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await context.read<AuthProvider>().resetApp();
+              if (mounted) {
+                context.go('/register');
+              }
+            },
+            child: const Text('Delete Account'),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'services/mcp_client.dart';
 import 'services/database_service.dart';
 import 'services/local_query_service.dart';
 import 'services/gemma_rag_service.dart';
+import 'services/gemma_model_service.dart';
+import 'services/log_service.dart';
 import 'providers/patient_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/query_provider.dart';
@@ -23,10 +28,22 @@ import 'screens/health_heart_rate_screen.dart';
 import 'screens/health_steps_screen.dart';
 import 'screens/health_blood_pressure_screen.dart';
 import 'screens/health_lab_results_screen.dart';
+import 'screens/log_viewer_screen.dart';
 import 'test/mcp_sse_test_screen.dart';
+import 'config/app_config.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Logging
+  await LogService.init();
+  LogService.log('Application starting...');
+
+  // Initialize sqflite for desktop (Linux, Windows, macOS)
+  if (Platform.isLinux || Platform.isWindows) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
 
   FlutterError.onError = (details) {
     FlutterError.dumpErrorToConsole(details);
@@ -77,14 +94,16 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
   late final DatabaseService _databaseService;
   late final LocalQueryService _localQueryService;
   late final GemmaRAGService _gemmaRAGService;
+  late final PatientProvider _patientProvider;
+  bool _isCoreReady = false;
 
   @override
   void initState() {
     super.initState();
 
     _mcpClient = MCPClient(
-      baseUrl: 'https://mcp-fhir-server.com',
-      apiKey: '9mgmf20y4hRDq6-VuvHM8E5PRUQJDLVHI0gB_pFMiTY',
+      baseUrl: AppConfig.mcpBaseUrl,
+      apiKey: AppConfig.mcpApiKey,
     );
 
     _authProvider = AuthProvider();
@@ -94,29 +113,62 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
       queryService: _localQueryService,
       databaseService: _databaseService,
     );
+    _patientProvider = PatientProvider(mcpClient: _mcpClient);
 
-    // Do not run async initializers inside `build()`.
-    // Kick them off here and ensure errors don't take down app startup.
+    // Kick off initialization
     unawaited(_safeInit());
   }
 
   Future<void> _safeInit() async {
     try {
+      // 1. Initialize MCP
       await _mcpClient.initialize();
-    } catch (e, st) {
-      debugPrint('MCPClient.initialize failed: $e');
-      debugPrint('$st');
-    }
 
-    try {
+      // 2. Initialize RAG
       await _gemmaRAGService.initialize();
+
+      // 3. Wait for Gemma model to actually load/download 
+      LogService.log('Main: Awaiting Gemma model initialization...');
+      await GemmaModelService.instance.ensureInitialized();
+
+      // 4. Wait for AuthProvider to load
+      int retries = 0;
+      while (_authProvider.isLoading && retries < 20) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        retries++;
+      }
+
+      // 5. Establish patient context if user exists
+      final userExists = await _authProvider.userExists();
+      if (userExists) {
+        final users = await _databaseService.getAllUsers();
+        if (users.isNotEmpty) {
+          final user = users.first;
+          LogService.log('Main: Establishing patient context for ${user.name}');
+          try {
+            if (user.dateOfBirth != null) {
+              await _patientProvider.searchPatientByNameAndDOB(user.name, user.dateOfBirth!);
+            } else {
+              await _patientProvider.searchPatientByName(user.name);
+            }
+          } catch (e) {
+            LogService.log('Main: Could not establish patient context: $e');
+          }
+        }
+      }
     } catch (e, st) {
-      debugPrint('GemmaRAGService.initialize failed: $e');
+      LogService.log('MCP/RAG Init Error: $e');
       debugPrint('$st');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCoreReady = true;
+        });
+      }
     }
   }
 
-  /// Theme: purple accent, light background, rounded cards (design-reference style). No Google Fonts (iOS safe).
+  /// Theme: purple accent, light background, rounded cards.
   static ThemeData _buildSafeTheme() {
     const primaryPurple = Color(0xFF7C3AED);
     const primaryPurpleLight = Color(0xFFA78BFA);
@@ -210,13 +262,42 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isCoreReady) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: _buildSafeTheme(),
+        home: Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets/icons/MyWellWallet.png',
+                  width: 100,
+                  height: 100,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.medical_services, size: 60, color: Color(0xFF7C3AED)),
+                ),
+                const SizedBox(height: 32),
+                const CircularProgressIndicator(),
+                const SizedBox(height: 24),
+                const Text(
+                  'Initializing MyWellWallet...',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(
           value: _authProvider,
         ),
-        ChangeNotifierProvider(
-          create: (_) => PatientProvider(mcpClient: _mcpClient),
+        ChangeNotifierProvider.value(
+          value: _patientProvider,
         ),
         ChangeNotifierProxyProvider<PatientProvider, QueryProvider>(
           create: (_) {
@@ -249,30 +330,20 @@ final GoRouter _router = GoRouter(
   redirect: (context, state) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     
-    // Wait for user loading to complete
     while (authProvider.isLoading) {
       await Future.delayed(const Duration(milliseconds: 100));
     }
     
-    // Check if user exists in database
     final userExists = await authProvider.userExists();
     
-    // If no user exists, go to registration (one-time setup)
     if (!userExists && state.uri.path != '/register') {
       return '/register';
     }
     
-    // If user exists but not authenticated, go to login (normal flow after registration)
-    // Never redirect to registration if user already exists
     if (userExists && 
         !authProvider.isAuthenticated && 
         state.uri.path != '/login' && 
         state.uri.path != '/register') {
-      return '/login';
-    }
-    
-    // Prevent access to registration if user already exists
-    if (userExists && state.uri.path == '/register') {
       return '/login';
     }
     
@@ -317,6 +388,10 @@ final GoRouter _router = GoRouter(
       builder: (context, state) {
         return const FetchDataScreen();
       },
+    ),
+    GoRoute(
+      path: '/logs',
+      builder: (context, state) => const LogViewerScreen(),
     ),
     GoRoute(
       path: '/health',

@@ -71,7 +71,6 @@ flutter:
   uses-material-design: true
   
   assets:
-    - assets/images/
     - assets/icons/
     - docs/FHIR_MEDICAL_GLOSSARY.md
     - docs/SQLITE_SCHEMA.md

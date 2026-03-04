@@ -262,6 +262,30 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Completely reset the app state and clear all data (for logging in as a different account)
+  Future<void> resetApp() async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // Clear all tables in database
+      await _database.deleteAllData();
+      
+      // Clear SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('biometric_enabled');
+      await prefs.remove('user_pin');
+      
+      _currentUser = null;
+      _isAuthenticated = false;
+    } catch (e) {
+      debugPrint('Error resetting app: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   /// Delete user account (removes from database)
   Future<void> deleteAccount() async {
     if (_currentUser == null) return;

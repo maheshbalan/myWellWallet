@@ -10,6 +10,8 @@ import '../providers/query_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/patient_provider.dart';
 import '../services/gemma_service.dart';
+import '../services/gemma_model_service.dart';
+import '../services/log_service.dart';
 import '../widgets/conversation_message.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/app_bar_logo.dart';
@@ -35,6 +37,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late Animation<double> _micAnimation;
   bool _showScrollToBottom = false;
   Timer? _noSpeechTimer;
+  bool _gemmaReady = false;
+  StreamSubscription<double>? _downloadSubscription;
+  bool _isDownloadDialogShowing = false;
 
   @override
   void initState() {
@@ -50,10 +55,130 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     _scrollController.addListener(_onScroll);
     // Request microphone and speech (one place only) so the app appears in Settings > Privacy (iOS)
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initializeSpeech());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeSpeech();
+      _checkGemmaStatus();
+      _listenToDownloadProgress();
+      
+      // If model is already downloading when we enter the screen, show the dialog
+      if (GemmaModelService.instance.isDownloading) {
+        _showDownloadProgressDialog(0.01); // Trigger dialog with initial small progress
+      }
+    });
     _checkAuthentication();
-    _establishPatientContext();
     _addWelcomeMessage();
+  }
+
+  void _listenToDownloadProgress() {
+    final gemma = GemmaModelService.instance;
+    
+    // Check if already downloading when we start listening
+    if (gemma.isDownloading) {
+      _showDownloadProgressDialog(gemma.currentProgress);
+    }
+
+    _downloadSubscription = gemma.downloadProgress.listen((progress) {
+      if (progress > 0.0 && progress < 1.0) {
+        _showDownloadProgressDialog(progress);
+      } else if (progress >= 1.0) {
+        if (_isDownloadDialogShowing && mounted) {
+          Navigator.of(context).pop(); // Close dialog
+          _isDownloadDialogShowing = false;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gemma model downloaded and ready!')),
+        );
+      }
+    });
+  }
+
+  void _handleGemmaStatusTap() async {
+    final gemma = GemmaModelService.instance;
+    if (gemma.isReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gemma local AI is active and ready.')),
+      );
+    } else if (gemma.isDownloading) {
+      _showDownloadProgressDialog(gemma.currentProgress);
+    } else {
+      // Not ready and not downloading, try to initialize
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Starting Gemma initialization...'), duration: Duration(seconds: 2)),
+      );
+      try {
+        await gemma.ensureInitialized();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(gemma.isReady ? 'Gemma initialized successfully!' : 'Gemma initialization failed.')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gemma Error: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  void _showDownloadProgressDialog(double progress) {
+    if (_isDownloadDialogShowing || !mounted) return;
+    
+    _isDownloadDialogShowing = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StreamBuilder<double>(
+          stream: GemmaModelService.instance.downloadProgress,
+          initialData: progress,
+          builder: (context, snapshot) {
+            final currentProgress = snapshot.data ?? 0.0;
+            return AlertDialog(
+              title: const Text('Downloading AI Model'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'MyWellWallet is downloading the local Gemma AI model (~1.1GB). This only happens once.',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 24),
+                  LinearProgressIndicator(
+                    value: currentProgress,
+                    backgroundColor: Colors.grey.shade200,
+                    valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColor),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '${(currentProgress * 100).toStringAsFixed(1)}%',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    ).then((_) => _isDownloadDialogShowing = false);
+  }
+
+  Future<void> _checkGemmaStatus() async {
+    final gemma = GemmaModelService.instance;
+    // Periodically check if Gemma is ready
+    Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (gemma.isReady != _gemmaReady) {
+        setState(() => _gemmaReady = gemma.isReady);
+      }
+      if (gemma.isReady) {
+        timer.cancel();
+      }
+    });
   }
 
   void _onScroll() {
@@ -77,82 +202,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       'Show me my immunization record',
       'Show me my Test Results',
     ];
-  }
-
-  Future<void> _establishPatientContext() async {
-    final authProvider = context.read<AuthProvider>();
-    final user = authProvider.currentUser;
-    if (user == null) return;
-
-    final patientProvider = context.read<PatientProvider>();
-    final existing = patientProvider.foundPatient;
-
-    // If we already have a patient that matches the current user, reuse it so we don't clear
-    // foundPatient (search* clears it at start) and avoid "Patient ID not available" on query.
-    if (existing != null && _foundPatientMatchesUser(existing, user.name, user.dateOfBirth)) {
-      _gemmaService.setContext(
-        'Patient: ${existing.displayName}, ID: ${existing.id}',
-      );
-      return;
-    }
-
-    if (user.dateOfBirth != null) {
-      try {
-        await patientProvider.searchPatientByNameAndDOB(
-          user.name,
-          user.dateOfBirth!,
-        );
-        final patient = patientProvider.foundPatient;
-        if (patient != null) {
-          _gemmaService.setContext(
-            'Patient: ${patient.displayName}, ID: ${patient.id}',
-          );
-        }
-      } catch (e) {
-        debugPrint('Could not establish patient context: $e');
-        try {
-          await patientProvider.searchPatientByName(user.name);
-          final patient = patientProvider.foundPatient;
-          if (patient != null) {
-            _gemmaService.setContext(
-              'Patient: ${patient.displayName}, ID: ${patient.id}',
-            );
-          }
-        } catch (e2) {
-          debugPrint('Could not establish patient context with name only: $e2');
-        }
-      }
-    } else {
-      try {
-        await patientProvider.searchPatientByName(user.name);
-        final patient = patientProvider.foundPatient;
-        if (patient != null) {
-          _gemmaService.setContext(
-            'Patient: ${patient.displayName}, ID: ${patient.id}',
-          );
-        }
-      } catch (e) {
-        debugPrint('Could not establish patient context: $e');
-      }
-    }
-  }
-
-  static bool _foundPatientMatchesUser(
-    Patient patient,
-    String userName,
-    DateTime? userDob,
-  ) {
-    final nameMatch = patient.displayName
-            .toLowerCase()
-            .contains(userName.toLowerCase()) ||
-        userName.toLowerCase().contains(patient.displayName.toLowerCase());
-    if (!nameMatch) return false;
-    if (userDob == null) return true;
-    final birthDate = patient.birthDate;
-    if (birthDate == null) return true;
-    final patientDob = birthDate.split('T').first;
-    final expected = userDob.toIso8601String().split('T').first;
-    return patientDob == expected;
   }
 
   Future<void> _checkAuthentication() async {
@@ -345,46 +394,54 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       } else if (queryProvider.lastResult != null) {
         final result = queryProvider.lastResult!;
-        String response;
+        bool isMarkdown = result['markdown'] != null;
         
-        // Check if result has markdown (from local query)
-        if (result['result'] != null && result['result']['markdown'] != null) {
-          response = result['result']['markdown'] as String;
+        // Check if result has markdown (already formatted)
+        if (result['markdown'] != null) {
+          final response = result['markdown'] as String;
+          _addAssistantMessage(response, isMarkdown: true);
+        } else if (result['result'] != null || result['resources'] != null) {
+          // Generate response using Gemma service WITH STREAMING
+          // Normalize the data format
+          final Map<String, dynamic> fhirData = result['result'] != null
+              ? result['result'] as Map<String, dynamic>
+              : {'resources': result['resources']};
+          
+          // Add an empty assistant message that we will update with tokens
+          setState(() {
+            _messages.add({
+              'isUser': false,
+              'message': '',
+              'timestamp': DateTime.now(),
+              'isMarkdown': true,
+            });
+          });
+          
+          final int lastIndex = _messages.length - 1;
+          String fullResponse = '';
+          
+          await for (final token in _gemmaService.generateStreamingResponse(query, fhirData)) {
+            fullResponse += token;
+            setState(() {
+              _messages[lastIndex]['message'] = fullResponse;
+            });
+            // Auto-scroll as text comes in
+            _scrollToBottom();
+          }
         } else {
-          // Generate response using Gemma service for MCP results
-          response = await _gemmaService.generateResponse(
-            query,
-            result['result'] ?? result,
-          );
+          _addAssistantMessage('I processed your request but found no specific data to display. Please ensure your health records are synced.');
         }
 
-        setState(() {
-          _messages.add({
-            'isUser': false,
-            'message': response,
-            'timestamp': DateTime.now(),
-            'isMarkdown': result['result'] != null && result['result']['markdown'] != null,
-          });
-          // Generate follow-up prompts based on query
-          if (query.toLowerCase().contains('visit') || query.toLowerCase().contains('encounter')) {
-            _followUpPrompts = ['Show me my immunization record', 'Show me my Test Results'];
-          } else if (query.toLowerCase().contains('immunization') || query.toLowerCase().contains('vaccine')) {
-            _followUpPrompts = ['Show me my recent visits', 'Show me my Test Results'];
-          } else if (query.toLowerCase().contains('test') || query.toLowerCase().contains('result') || query.toLowerCase().contains('diagnostic')) {
-            _followUpPrompts = ['Show me my recent visits', 'Show me my immunization record'];
-          } else {
-            _followUpPrompts = [
-              'Show me my recent visits',
-              'Show me my immunization record',
-              'Show me my Test Results',
-            ];
-          }
-        });
+        // Generate follow-up prompts based on query
+        _updateFollowUpPrompts(query);
         WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
       }
     } catch (e) {
+      LogService.log('HomeScreen error: $e');
       setState(() {
-        _messages.removeLast();
+        if (_messages.isNotEmpty && _messages.last['message'] == 'typing') {
+          _messages.removeLast();
+        }
         _messages.add({
           'isUser': false,
           'message': 'Sorry, I encountered an error processing your request: $e',
@@ -392,7 +449,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       });
     }
-    // No auto-scroll: user keeps question in view and scrolls down or uses arrow to see answer
+  }
+
+  void _addAssistantMessage(String message, {bool isMarkdown = false}) {
+    setState(() {
+      _messages.add({
+        'isUser': false,
+        'message': message,
+        'timestamp': DateTime.now(),
+        'isMarkdown': isMarkdown,
+      });
+    });
+  }
+
+  void _updateFollowUpPrompts(String query) {
+    setState(() {
+      if (query.toLowerCase().contains('visit') || query.toLowerCase().contains('encounter')) {
+        _followUpPrompts = ['Show me my immunization record', 'Show me my Test Results'];
+      } else if (query.toLowerCase().contains('immunization') || query.toLowerCase().contains('vaccine')) {
+        _followUpPrompts = ['Show me my recent visits', 'Show me my Test Results'];
+      } else if (query.toLowerCase().contains('test') || query.toLowerCase().contains('result') || query.toLowerCase().contains('diagnostic')) {
+        _followUpPrompts = ['Show me my recent visits', 'Show me my immunization record'];
+      } else {
+        _followUpPrompts = [
+          'Show me my recent visits',
+          'Show me my immunization record',
+          'Show me my Test Results',
+        ];
+      }
+    });
   }
 
   void _handleFollowUpPrompt(String prompt) {
@@ -423,8 +508,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
+  void _resetChat() {
+    setState(() {
+      _messages.clear();
+      _addWelcomeMessage();
+      _queryController.clear();
+      _gemmaService.clearContext();
+      context.read<QueryProvider>().clearResults();
+    });
+  }
+
   @override
   void dispose() {
+    _downloadSubscription?.cancel();
     _noSpeechTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _queryController.dispose();
@@ -441,16 +537,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
-        leading: const AppBarLogo(showBackButton: false),
+        leading: _messages.length > 1
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: Color(0xFF64748B)),
+                onPressed: _resetChat,
+                tooltip: 'Back to home',
+              )
+            : const AppBarLogo(showBackButton: false),
         title: const Text('MyWellWallet'),
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
+          // Gemma status indicator
+          InkWell(
+            onTap: _handleGemmaStatusTap,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    _gemmaReady ? Icons.bolt : Icons.bolt_outlined,
+                    size: 16,
+                    color: _gemmaReady ? Colors.amber : Colors.grey,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _gemmaReady ? 'Gemma' : 'Offline',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: _gemmaReady ? Colors.amber.shade700 : Colors.grey,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Color(0xFF64748B)),
             onSelected: (value) async {
               if (value == 'test') {
-                context.go('/test-sse');
+                context.push('/test-sse');
+              } else if (value == 'logs') {
+                context.push('/logs');
               } else if (value == 'logout') {
                 await context.read<AuthProvider>().logout();
                 if (mounted) context.go('/login');
@@ -462,6 +593,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: ListTile(
                   leading: Icon(Icons.science_outlined),
                   title: Text('Test connection'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'logs',
+                child: ListTile(
+                  leading: Icon(Icons.list_alt_outlined),
+                  title: Text('View logs'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
@@ -481,143 +620,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       body: SafeArea(
         child: Column(
           children: [
-            // Purple header section with search (design-reference style)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-              decoration: BoxDecoration(
-                color: colorScheme.primary,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(28),
-                  bottomRight: Radius.circular(28),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: colorScheme.primary.withOpacity(0.25),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            // Conversation thread (always one scrollable list, LLM-style)
+            Expanded(
+              child: Stack(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Text(
-                      'How can I help you today?',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
+                  ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final message = _messages[index];
+                      if (message['message'] == 'typing') {
+                        return const TypingIndicator();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: ConversationMessage(
+                          isUser: message['isUser'] as bool,
+                          message: message['message'] as String,
+                          timestamp: message['timestamp'] as DateTime,
+                          isMarkdown: message['isMarkdown'] as bool? ?? false,
+                        ),
+                      );
+                    },
+                  ),
+                  // Scroll-to-bottom button (down arrow)
+                  if (_showScrollToBottom)
+                    Positioned(
+                      right: 16,
+                      bottom: 16,
+                      child: Material(
+                        elevation: 2,
+                        borderRadius: BorderRadius.circular(24),
                         color: Colors.white,
+                        child: InkWell(
+                          onTap: () {
+                            if (_scrollController.hasClients) {
+                              _scrollController.animateTo(
+                                _scrollController.position.maxScrollExtent,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOut,
+                              );
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(24),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            child: const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 28,
+                              color: Color(0xFF7B1FA2),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  // White rounded search bar inside purple area
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.06),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 20),
-                              Expanded(
-                                child: TextField(
-                                  controller: _queryController,
-                                  style: const TextStyle(fontSize: 18),
-                                  decoration: InputDecoration(
-                                    hintText: _isListening
-                                        ? 'Listening...'
-                                        : 'Ask me anything about your health...',
-                                    hintStyle: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey.shade500,
-                                    ),
-                                    border: InputBorder.none,
-                                  ),
-                                  maxLines: 1,
-                                  textCapitalization: TextCapitalization.sentences,
-                                  onSubmitted: (_) => _processQuery(),
-                                  enabled: !_isListening,
-                                ),
-                              ),
-                              // Microphone button: clearly different when on vs off
-                              Container(
-                                margin: const EdgeInsets.only(right: 8),
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: _isListening
-                                      ? Colors.red
-                                      : Colors.grey.shade400,
-                                  shape: BoxShape.circle,
-                                  boxShadow: _isListening
-                                      ? [
-                                          BoxShadow(
-                                            color: Colors.red.withOpacity(0.5),
-                                            blurRadius: 10,
-                                            spreadRadius: 1,
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                                child: IconButton(
-                                  icon: Icon(
-                                    _isListening ? Icons.mic : Icons.mic_outlined,
-                                    color: Colors.white,
-                                    size: 26,
-                                  ),
-                                  onPressed: _toggleListening,
-                                  tooltip: _isListening
-                                      ? 'Stop'
-                                      : 'Voice input',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Send Button (large, prominent)
-                      Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: colorScheme.primary.withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.send_outlined,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                          onPressed: _processQuery,
-                          tooltip: 'Send',
-                        ),
-                      ),
-                    ],
-                  ),
-                  
                 ],
               ),
             ),
@@ -697,61 +754,125 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-            // Conversation thread (always one scrollable list, LLM-style)
-            Expanded(
-              child: Stack(
-                children: [
-                  ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 80),
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      final message = _messages[index];
-                      if (message['message'] == 'typing') {
-                        return const TypingIndicator();
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: ConversationMessage(
-                          isUser: message['isUser'] as bool,
-                          message: message['message'] as String,
-                          timestamp: message['timestamp'] as DateTime,
-                          isMarkdown: message['isMarkdown'] as bool? ?? false,
-                        ),
-                      );
-                    },
+            // Chat input section at the bottom
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              decoration: BoxDecoration(
+                color: colorScheme.primary,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(28),
+                  topRight: Radius.circular(28),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: colorScheme.primary.withOpacity(0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, -4),
                   ),
-                  // Scroll-to-bottom button (down arrow)
-                  if (_showScrollToBottom)
-                    Positioned(
-                      right: 16,
-                      bottom: 24,
-                      child: Material(
-                        elevation: 2,
-                        borderRadius: BorderRadius.circular(24),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 56,
+                      decoration: BoxDecoration(
                         color: Colors.white,
-                        child: InkWell(
-                          onTap: () {
-                            if (_scrollController.hasClients) {
-                              _scrollController.animateTo(
-                                _scrollController.position.maxScrollExtent,
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeOut,
-                              );
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(24),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            child: Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              size: 28,
-                              color: const Color(0xFF7B1FA2),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.06),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 20),
+                          Expanded(
+                            child: TextField(
+                              controller: _queryController,
+                              style: const TextStyle(fontSize: 18),
+                              decoration: InputDecoration(
+                                hintText: _isListening
+                                    ? 'Listening...'
+                                    : 'Ask me about your health...',
+                                hintStyle: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey.shade500,
+                                ),
+                                border: InputBorder.none,
+                              ),
+                              maxLines: 1,
+                              textCapitalization: TextCapitalization.sentences,
+                              onSubmitted: (_) => _processQuery(),
+                              enabled: !_isListening,
                             ),
                           ),
-                        ),
+                          // Microphone button
+                          Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: _isListening
+                                  ? Colors.red
+                                  : Colors.grey.shade400,
+                              shape: BoxShape.circle,
+                              boxShadow: _isListening
+                                  ? [
+                                      BoxShadow(
+                                        color: Colors.red.withOpacity(0.5),
+                                        blurRadius: 10,
+                                        spreadRadius: 1,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: IconButton(
+                              icon: Icon(
+                                _isListening ? Icons.mic : Icons.mic_outlined,
+                                color: Colors.white,
+                                size: 26,
+                              ),
+                              onPressed: _toggleListening,
+                              tooltip: _isListening
+                                  ? 'Stop'
+                                  : 'Voice input',
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Send Button
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: colorScheme.primary.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.send_outlined,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      onPressed: _processQuery,
+                      tooltip: 'Send',
+                    ),
+                  ),
                 ],
               ),
             ),

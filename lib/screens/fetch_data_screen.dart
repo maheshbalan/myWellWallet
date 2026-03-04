@@ -233,7 +233,7 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: const AppBarLogo(showBackButton: true),
+        leading: const AppBarLogo(showBackButton: false),
         title: const Text('Fetch My Health Data'),
       ),
       body: SingleChildScrollView(

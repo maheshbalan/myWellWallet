@@ -295,6 +295,23 @@ class DatabaseService {
     await db.delete('users', where: 'id = ?', whereArgs: [userId]);
   }
 
+  /// Delete all data from all tables (for app reset)
+  Future<void> deleteAllData() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('users');
+      await txn.delete('fhir_patients');
+      await txn.delete('fhir_resources');
+      await txn.delete('fetch_summaries');
+      await txn.delete('health_glucose');
+      await txn.delete('health_heart_rate');
+      await txn.delete('health_steps');
+      await txn.delete('health_blood_pressure');
+      await txn.delete('health_sync_settings');
+      await txn.delete('health_lab_results');
+    });
+  }
+
   // ========== FHIR Patient Bundle Methods ==========
 
   /// Save FHIR patient bundle

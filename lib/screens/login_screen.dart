@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:local_auth/local_auth.dart';
 import '../providers/auth_provider.dart';
+import '../providers/patient_provider.dart';
 import '../widgets/app_bar_logo.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -36,7 +37,24 @@ class _LoginScreenState extends State<LoginScreen> {
       final success = await authProvider.authenticate();
 
       if (success && mounted) {
-        context.go('/');
+        // Establish context before leaving login screen
+        final user = authProvider.currentUser;
+        if (user != null) {
+          final patientProvider = context.read<PatientProvider>();
+          try {
+            if (user.dateOfBirth != null) {
+              await patientProvider.searchPatientByNameAndDOB(user.name, user.dateOfBirth!);
+            } else {
+              await patientProvider.searchPatientByName(user.name);
+            }
+          } catch (e) {
+            debugPrint('Login context error: $e');
+          }
+        }
+        
+        if (mounted) {
+          context.go('/');
+        }
       } else if (mounted) {
         // Biometric failed, show PIN option
         setState(() {
@@ -74,23 +92,40 @@ class _LoginScreenState extends State<LoginScreen> {
       final authProvider = context.read<AuthProvider>();
       final storedPin = await authProvider.getStoredPin();
       
+      bool authenticated = false;
       if (storedPin == null) {
-        // First time setting PIN
         await authProvider.setPin(pin);
         await authProvider.setAuthenticated(true);
-        if (mounted) {
-          context.go('/');
-        }
+        authenticated = true;
       } else if (storedPin == pin) {
         await authProvider.setAuthenticated(true);
-        if (mounted) {
-          context.go('/');
-        }
+        authenticated = true;
       } else {
         setState(() {
           _errorMessage = 'Incorrect PIN. Please try again.';
           _isLoading = false;
         });
+      }
+
+      if (authenticated && mounted) {
+        // Establish context before leaving login screen
+        final user = authProvider.currentUser;
+        if (user != null) {
+          final patientProvider = context.read<PatientProvider>();
+          try {
+            if (user.dateOfBirth != null) {
+              await patientProvider.searchPatientByNameAndDOB(user.name, user.dateOfBirth!);
+            } else {
+              await patientProvider.searchPatientByName(user.name);
+            }
+          } catch (e) {
+            debugPrint('Login context error: $e');
+          }
+        }
+        
+        if (mounted) {
+          context.go('/');
+        }
       }
     } catch (e) {
       setState(() {
@@ -252,6 +287,20 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ],
+                        const SizedBox(height: 24),
+                        const Divider(),
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: () async {
+                            await context.read<AuthProvider>().resetApp();
+                            if (mounted) context.go('/register');
+                          },
+                          child: const Text('Log in as a different account'),
+                        ),
+                        TextButton(
+                          onPressed: () => context.go('/register'),
+                          child: const Text('Create a different account'),
+                        ),
                         if (_errorMessage != null) ...[
                           const SizedBox(height: 20),
                           Container(

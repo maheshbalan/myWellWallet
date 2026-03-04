@@ -55,20 +55,12 @@ class ConversationMessage extends StatelessWidget {
                 );
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   color: isUser
                       ? colorScheme.primary
                       : const Color(0xFFF5F3FF),
                   borderRadius: BorderRadius.circular(20),
-                  border: isUser
-                      ? null
-                      : Border(
-                          left: const BorderSide(color: Color(0xFFB39DDB), width: 4),
-                          top: const BorderSide(color: Color(0xFFE8E0F0)),
-                          right: const BorderSide(color: Color(0xFFE8E0F0)),
-                          bottom: const BorderSide(color: Color(0xFFE8E0F0)),
-                        ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(isUser ? 0.12 : 0.06),
@@ -77,43 +69,61 @@ class ConversationMessage extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (isMarkdown && !isUser)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.copy_outlined, size: 16),
-                            color: const Color(0xFF64748B),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            onPressed: () {
-                              Clipboard.setData(ClipboardData(text: message));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text('Copied to clipboard'),
-                                  duration: const Duration(seconds: 2),
-                                  behavior: SnackBarBehavior.floating,
+                child: IntrinsicHeight(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!isUser)
+                        Container(
+                          width: 6,
+                          color: const Color(0xFFB39DDB),
+                        ),
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (isMarkdown && !isUser)
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.copy_outlined, size: 16),
+                                      color: const Color(0xFF64748B),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () {
+                                        Clipboard.setData(ClipboardData(text: message));
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: const Text('Copied to clipboard'),
+                                            duration: const Duration(seconds: 2),
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      },
+                                      tooltip: 'Copy to clipboard',
+                                    ),
+                                  ],
                                 ),
-                              );
-                            },
-                            tooltip: 'Copy to clipboard',
+                              isMarkdown
+                                  ? _MarkdownText(text: message, isUser: isUser)
+                                  : Text(
+                                      message,
+                                      style: TextStyle(
+                                        color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                                        fontSize: 15,
+                                        height: 1.5,
+                                      ),
+                                    ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    isMarkdown
-                        ? _MarkdownText(text: message, isUser: isUser)
-                        : Text(
-                            message,
-                            style: TextStyle(
-                              color: isUser ? Colors.white : const Color(0xFF2C3E50),
-                              fontSize: 15,
-                              height: 1.5,
-                            ),
-                          ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

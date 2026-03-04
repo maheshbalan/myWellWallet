@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../providers/auth_provider.dart';
+import '../providers/patient_provider.dart';
 import '../widgets/app_bar_logo.dart';
 
 class RegistrationScreen extends StatefulWidget {
@@ -128,12 +129,25 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Account created successfully!'),
+            content: Text('Account created! Establishing health context...'),
             backgroundColor: Colors.green,
           ),
         );
-        // Redirect to home
-        context.go('/');
+        
+        // Establish patient context immediately
+        try {
+          final patientProvider = context.read<PatientProvider>();
+          await patientProvider.searchPatientByNameAndDOB(
+            _nameController.text.trim(),
+            _dateOfBirth!,
+          );
+        } catch (e) {
+          debugPrint('Context establishment error: $e');
+        }
+
+        if (mounted) {
+          context.go('/');
+        }
       }
     } catch (e) {
       debugPrint('Registration error: $e');
@@ -162,7 +176,17 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
-        leading: const AppBarLogo(showBackButton: false),
+        leading: AppBarLogo(
+          showBackButton: true,
+          onBack: () async {
+            final auth = context.read<AuthProvider>();
+            if (await auth.userExists()) {
+              if (mounted) context.go('/login');
+            } else {
+              // If no user exists, back does nothing or we could show a hint
+            }
+          },
+        ),
         title: const Text('Create Account'),
         automaticallyImplyLeading: false,
         backgroundColor: Colors.white,

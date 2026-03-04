@@ -320,23 +320,58 @@ class LocalRAGService {
 
   /// Get FHIR resource type from human term
   String? translateHumanTerm(String humanTerm) {
+    final lowerTerm = humanTerm.toLowerCase().trim();
+    
+    // 1. High-priority direct mapping for common terms
+    final directMapping = {
+      'test result': 'DiagnosticReport',
+      'test results': 'DiagnosticReport',
+      'lab result': 'DiagnosticReport',
+      'lab results': 'DiagnosticReport',
+      'lab test': 'DiagnosticReport',
+      'lab tests': 'DiagnosticReport',
+      'diagnostic report': 'DiagnosticReport',
+      'visit': 'Encounter',
+      'visits': 'Encounter',
+      'appointment': 'Encounter',
+      'appointments': 'Encounter',
+      'medication': 'MedicationStatement',
+      'medications': 'MedicationStatement',
+      'drug': 'MedicationStatement',
+      'drugs': 'MedicationStatement',
+      'vaccine': 'Immunization',
+      'vaccines': 'Immunization',
+      'immunization': 'Immunization',
+      'immunizations': 'Immunization',
+      'glucose': 'Observation',
+      'blood pressure': 'Observation',
+      'heart rate': 'Observation',
+      'vital signs': 'Observation',
+      'vitals': 'Observation',
+    };
+
+    if (directMapping.containsKey(lowerTerm)) {
+      return directMapping[lowerTerm];
+    }
+
+    // 2. Check for partial matches in direct mapping
+    for (var entry in directMapping.entries) {
+      if (lowerTerm.contains(entry.key) || entry.key.contains(lowerTerm)) {
+        return entry.value;
+      }
+    }
+
+    // 3. Fallback to glossary document search
     if (_fhirGlossary == null) return null;
     
-    final lowerTerm = humanTerm.toLowerCase();
     final lines = _fhirGlossary!.split('\n');
-    
-    // Look for mappings in the glossary
     for (var i = 0; i < lines.length; i++) {
-      final line = lines[i];
-      if (line.toLowerCase().contains(lowerTerm)) {
-        // Look for FHIR Resource: pattern
+      final line = lines[i].toLowerCase();
+      if (line.contains(lowerTerm)) {
         for (var j = i; j < i + 10 && j < lines.length; j++) {
-          if (lines[j].contains('**FHIR Resource**:') || lines[j].contains('FHIR Resource:')) {
-            final resourceLine = lines[j];
-            final match = RegExp(r'`(\w+)`').firstMatch(resourceLine);
-            if (match != null) {
-              return match.group(1);
-            }
+          if (lines[j].contains('FHIR Resource:')) {
+            final match = RegExp(r'`(\w+)`').firstMatch(lines[j]);
+            if (match != null) return match.group(1);
           }
         }
       }
