@@ -59,34 +59,50 @@ class GemmaRAGService {
     
     Map<String, dynamic>? interpretation;
 
-    // Try to use local Gemma for interpretation if ready
+    // 1. Try rule-based interpretation FIRST (it's instant and reliable for presets)
+    LogService.log('GemmaRAGService: Attempting rule-based interpretation.');
+    interpretation = await _interpretQueryWithRAG(
+      query,
+      contextChunks,
+      patientId,
+    );
+
+    // 2. Use MedGemma ONLY if rule-based is unsure or needs clarification
     final gemma = GemmaModelService.instance;
-    if (gemma.isReady) {
+    if ((interpretation == null || interpretation['needsClarification'] == true) && gemma.isReady) {
       try {
-        LogService.log('GemmaRAGService: Using local Gemma for interpretation.');
+        LogService.log('GemmaRAGService: Rule-based unsure, using MedGemma 4B to generate clinical query plan...');
         final prompt = _buildQueryGenerationPrompt(query, patientId, contextChunks);
-        final response = await gemma.generate(prompt);
+        
+        // 15-second timeout for query generation
+        final response = await gemma.generate(prompt).timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            LogService.log('GemmaRAGService: MedGemma interpretation timed out.');
+            return null;
+          },
+        );
         
         if (response != null) {
-          interpretation = _parseGemmaJsonResponse(response);
-          LogService.log('GemmaRAGService: Gemma interpretation: ${jsonEncode(interpretation)}');
+          final gemmaPlan = _parseGemmaJsonResponse(response);
+          if (gemmaPlan != null && gemmaPlan['queryPlan'] != null) {
+            interpretation = gemmaPlan;
+            LogService.log('GemmaRAGService: MedGemma generated a specialized query plan.');
+          }
         }
       } catch (e) {
-        LogService.log('GemmaRAGService: Local Gemma interpretation failed: $e');
+        LogService.log('GemmaRAGService: MedGemma query generation failed: $e');
       }
     }
 
-    // Fallback to rule-based interpretation if Gemma not ready or failed
+    // Check if clarification is needed
     if (interpretation == null) {
-      LogService.log('GemmaRAGService: Falling back to rule-based interpretation.');
-      interpretation = await _interpretQueryWithRAG(
-        query,
-        contextChunks,
-        patientId,
-      );
+      return {
+        'type': 'error',
+        'message': 'Failed to interpret query.',
+      };
     }
 
-    // Check if clarification is needed
     if (interpretation['needsClarification'] == true) {
       return {
         'type': 'clarification',
@@ -113,22 +129,28 @@ class GemmaRAGService {
     };
   }
 
-  /// Parse JSON from Gemma's response (handles cases where Gemma adds extra text)
+  /// Parse JSON from Gemma's response
   Map<String, dynamic>? _parseGemmaJsonResponse(String response) {
     try {
+      // If we provided a prefix like '{"needsClarification":', Gemma might only return the rest.
+      // We prepend the prefix if the response doesn't start with '{'
+      String fullJson = response.trim();
+      if (!fullJson.startsWith('{')) {
+        fullJson = '{"needsClarification":' + fullJson;
+      }
+
       // Find the first '{' and last '}'
-      final start = response.indexOf('{');
-      final end = response.lastIndexOf('}');
+      final start = fullJson.indexOf('{');
+      final end = fullJson.lastIndexOf('}');
       if (start == -1 || end == -1) return null;
-      
-      final jsonStr = response.substring(start, end + 1);
+
+      final jsonStr = fullJson.substring(start, end + 1);
       return jsonDecode(jsonStr) as Map<String, dynamic>;
     } catch (e) {
-      debugPrint('Error parsing JSON from Gemma: $e');
+      LogService.log('Error parsing JSON from MedGemma: $e');
       return null;
     }
   }
-
   /// Execute a query plan and format results
   Future<Map<String, dynamic>> executeQueryPlan(
     Map<String, dynamic> queryPlan,
@@ -193,37 +215,22 @@ class GemmaRAGService {
     String? patientId,
     List<String> contextChunks,
   ) {
-    final buffer = StringBuffer();
-    
-    buffer.writeln('You are MyWellWallet, a healthcare data assistant. Convert natural language to structured JSON query plans.');
-    buffer.writeln();
-    
-    buffer.writeln('## Available FHIR Resources:');
-    buffer.writeln('- DiagnosticReport: Use for "test results", "lab results", "imaging", "reports".');
-    buffer.writeln('- Observation: Use for "vital signs", "blood pressure", "glucose", "heart rate", "measurements", "lab values".');
-    buffer.writeln('- Encounter: Use for "visits", "appointments", "checkups", "admissions".');
-    buffer.writeln('- MedicationStatement: Use for "medications", "prescriptions", "drugs", "current meds".');
-    buffer.writeln('- Immunization: Use for "vaccines", "shots", "vaccination record".');
-    buffer.writeln('- Condition: Use for "diagnoses", "health problems", "illnesses", "medical conditions".');
-    buffer.writeln('- Procedure: Use for "surgeries", "operations", "medical procedures".');
-    buffer.writeln();
+    return '''<start_of_turn>user
+You are a FHIR clinical agent. Convert this query into a FHIR JSON query plan.
+Patient ID: $patientId
 
-    if (contextChunks.isNotEmpty) {
-      buffer.writeln('## Medical Reference Context:');
-      for (var chunk in contextChunks.take(3)) {
-        buffer.writeln(chunk);
-      }
-      buffer.writeln();
-    }
-    
-    buffer.writeln('## User Query: "$query"');
-    buffer.writeln();
-    buffer.writeln('## Task:');
-    buffer.writeln('Respond ONLY with a JSON object. Decide if the query is clear enough to map to a resource type.');
-    buffer.writeln('1. If clear: {"needsClarification": false, "queryPlan": {"resourceType": "DiagnosticReport", "filters": {"sort": "-date"}}}');
-    buffer.writeln('2. If ambiguous: {"needsClarification": true, "clarificationQuestion": "Would you like to see your lab results or your medical visits?"}');
-    
-    return buffer.toString();
+Guidelines:
+- Use subject=Patient/$patientId for: Observation, Encounter, DiagnosticReport.
+- Use patient=Patient/$patientId for: Immunization, MedicationStatement, Condition, AllergyIntolerance.
+- Use request_generic_resource for resources not listed.
+
+Response Format:
+{"needsClarification": false, "queryPlan": {"resourceType": "TYPE", "filters": {"_count": 10, "_sort": "-date"}}}
+
+Respond ONLY with valid JSON.
+<end_of_turn>
+<start_of_turn>model
+{"needsClarification":''';
   }
 
   /// Interpret query with RAG context (rule-based for now, will use Gemma later)
@@ -233,77 +240,31 @@ class GemmaRAGService {
     String? patientId,
   ) async {
     final lowerQuery = query.toLowerCase().trim();
-    
+
     // Check for ambiguous queries that need clarification
     if (_isAmbiguous(lowerQuery)) {
       return _generateClarificationQuestion(lowerQuery);
     }
-    
-    // Extract query components
-    final recordNumber = _extractRecordNumber(lowerQuery);
-    final specificValue = _extractSpecificValue(lowerQuery);
-    final resourceType = _determineResourceType(lowerQuery, contextChunks);
-    
-    if (resourceType == null) {
-      return {
-        'needsClarification': true,
-        'clarificationQuestion': 'I\'m not sure what you\'re looking for. Are you asking about:',
-        'clarificationOptions': [
-          'Recent visits or appointments',
-          'Test results or lab reports',
-          'Medications',
-          'Lab values (like cholesterol, glucose)',
-          'Immunizations',
-        ],
-      };
+
+    // Use refined rule-based interpretation
+    final result = _interpretWithRules(lowerQuery, contextChunks);
+    if (result != null) {
+      return result;
     }
-    
-    // Build query plan
-    final queryPlan = <String, dynamic>{
-      'resourceType': resourceType,
-      'filters': <String, dynamic>{},
-      'fallbackToMCP': true,
-    };
-    
-    // Add code search for medical terms
-    if (specificValue != null) {
-      queryPlan['filters'] = {
-        ...queryPlan['filters'] as Map<String, dynamic>,
-        'codeSearch': {
-          'type': 'loinc',
-          'term': specificValue,
-        },
-      };
-    }
-    
-    // Add record index
-    if (recordNumber != null) {
-      queryPlan['recordIndex'] = recordNumber - 1;
-    }
-    
-    // Add sorting
-    if (_shouldSortByDate(lowerQuery)) {
-      final sortField = _getSortField(resourceType);
-      queryPlan['filters'] = {
-        ...queryPlan['filters'] as Map<String, dynamic>,
-        'sort': '-$sortField',
-      };
-    }
-    
-    // Add limit for "recent" queries
-    if (_isRecentQuery(lowerQuery)) {
-      queryPlan['filters'] = {
-        ...queryPlan['filters'] as Map<String, dynamic>,
-        'limit': 10,
-      };
-    }
-    
+
+    // Default fallback if everything else fails
     return {
-      'needsClarification': false,
-      'queryPlan': queryPlan,
+      'needsClarification': true,
+      'clarificationQuestion': 'I\'m not sure what you\'re looking for. Are you asking about:',
+      'clarificationOptions': [
+        'Recent visits or appointments',
+        'Test results or lab reports',
+        'Medications',
+        'Lab values (like cholesterol, glucose)',
+        'Immunizations',
+      ],
     };
   }
-
   /// Format results using Gemma with RAG context
   Future<String> _formatResultsWithGemma(
     List<Map<String, dynamic>> resources,
@@ -372,26 +333,7 @@ class GemmaRAGService {
 
   /// Check if query is ambiguous
   bool _isAmbiguous(String query) {
-    final ambiguousPatterns = [
-      'show me',
-      'what',
-      'tell me',
-      'give me',
-    ];
-    
-    // If query is too short or too generic
-    if (query.split(' ').length < 3) {
-      return true;
-    }
-    
-    // If query doesn't contain specific terms
-    final hasSpecificTerm = [
-      'cholesterol', 'glucose', 'blood pressure', 'medication',
-      'visit', 'test', 'result', 'immunization', 'vaccine',
-      'record', 'level', 'value',
-    ].any((term) => query.contains(term));
-    
-    return !hasSpecificTerm;
+    return false; // Let AI decide if it needs clarification via prompt
   }
 
   /// Generate clarification question
@@ -429,44 +371,81 @@ class GemmaRAGService {
     };
   }
 
-  /// Determine resource type from query
-  String? _determineResourceType(String query, List<String> contextChunks) {
+  /// Determine query plan from query using rule-based logic
+  Map<String, dynamic>? _interpretWithRules(String query, List<String> contextChunks) {
     final lowerQuery = query.toLowerCase();
+    LogService.log('GemmaRAGService: _interpretWithRules query: "$lowerQuery"');
     
-    // 1. Try RAG service translation first (now more robust)
-    // Check the whole query string first
-    String? translated = _ragService.translateHumanTerm(lowerQuery);
-    if (translated != null) return translated;
-
-    // 2. Try individual words
-    final words = lowerQuery.split(' ');
-    for (var word in words) {
-      if (word.length > 3) {
-        translated = _ragService.translateHumanTerm(word);
-        if (translated != null) return translated;
-      }
+    // 1. High-priority keyword matches for Presets
+    if (_matches(lowerQuery, ['immunization', 'vaccine', 'vaccination', 'shot'])) {
+      LogService.log('GemmaRAGService: Preset match -> Immunization');
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': 'Immunization',
+          'filters': {'_count': 10, '_sort': '-date'}
+        }
+      };
     }
-    
-    // 3. Fallback to hardcoded keywords if RAG translation fails
     if (_matches(lowerQuery, ['visit', 'visits', 'appointment', 'encounter'])) {
-      return 'Encounter';
+      LogService.log('GemmaRAGService: Preset match -> Encounter');
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': 'Encounter',
+          'filters': {'_count': 10, '_sort': '-date'}
+        }
+      };
     }
     if (_matches(lowerQuery, ['test result', 'test results', 'diagnostic report', 'lab report'])) {
-      return 'DiagnosticReport';
+      LogService.log('GemmaRAGService: Preset match -> DiagnosticReport');
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': 'DiagnosticReport',
+          'filters': {'_count': 10, '_sort': '-date'}
+        }
+      };
     }
-    if (_matches(lowerQuery, ['medication', 'medications', 'drug', 'prescription'])) {
-      return 'MedicationStatement';
+    if (_matches(lowerQuery, ['observation', 'lab value', 'level', 'cholesterol', 'glucose', 'blood pressure', 'vital'])) {
+      LogService.log('GemmaRAGService: Keyword match -> Observation');
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': 'Observation',
+          'filters': {'_count': 10, '_sort': '-date'}
+        }
+      };
     }
-    if (_matches(lowerQuery, ['immunization', 'vaccine', 'vaccination', 'shot'])) {
-      return 'Immunization';
+
+    // 2. Try RAG service translation
+    String? translated = _ragService.translateHumanTerm(lowerQuery);
+    if (translated == null) {
+      final words = lowerQuery.split(' ');
+      for (var word in words) {
+        if (word.length > 3) {
+          translated = _ragService.translateHumanTerm(word);
+          if (translated != null) {
+            LogService.log('GemmaRAGService: RAG translated word "$word" to $translated');
+            break;
+          }
+        }
+      }
+    } else {
+      LogService.log('GemmaRAGService: RAG translated full query to $translated');
     }
-    if (_matches(lowerQuery, ['observation', 'lab value', 'level', 'cholesterol', 'glucose', 'blood pressure'])) {
-      return 'Observation';
-    }
-    if (_matches(lowerQuery, ['condition', 'diagnosis', 'problem'])) {
-      return 'Condition';
+
+    if (translated != null) {
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': translated,
+          'filters': {'_count': 10, '_sort': '-date'}
+        }
+      };
     }
     
+    LogService.log('GemmaRAGService: No rule-based match found.');
     return null;
   }
 

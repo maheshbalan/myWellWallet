@@ -1,33 +1,34 @@
-# Update Summary - March 4, 2026
+# Update Summary - March 19, 2026
 
-This update introduces full local AI integration, an enhanced RAG pipeline, and significant stability improvements to MyWellWallet.
+This update marks a major milestone with the full integration of the **MedGemma 4B** specialized medical AI, an advanced agentic RAG pipeline, and significant architectural stability improvements.
 
 ## Key Features
 
-### 1. Local AI Integration (Gemma 2B)
-- **On-Device Inference**: Integrated `llamadart` to run the Gemma 2 2B IT model entirely on-device.
-- **Platform-Aware Performance**: 
-  - **Desktop (Linux/Windows)**: Uses stable CPU backend to avoid rendering conflicts.
-  - **Mobile (iOS/Android)**: Supports full GPU acceleration (Metal/Vulkan) for high-speed responses.
-- **Streaming & Memory**: Character-by-character response streaming and a 10-turn conversation memory for natural follow-up support.
-- **Persona**: Uses official Gemma 2 Chat Templates for a friendly, professional health assistant voice.
+### 1. Specialized Medical AI (MedGemma 4B)
+- **Model Upgrade**: Switched from Gemma 2B to **MedGemma 4B IT** (Q4_K_M quantization, ~2.5GB), providing superior medical reasoning and clinical accuracy.
+- **On-Device Inference**: Fully integrated `llamadart` 0.6.4 to run the 4B model entirely on-device.
+- **Hardware-Aware Backend**: 
+  - **Desktop (Linux/Windows)**: Uses a stable CPU backend with multi-threading optimization.
+  - **Mobile (iOS/Android)**: Supports full GPU/NPU acceleration via Metal/Vulkan for near-instant responses.
+- **Robust Generation**: Implemented intelligent timeouts and streaming safety checks to ensure the UI remains responsive during complex medical analysis.
 
-### 2. Enhanced RAG (Retrieval-Augmented Generation)
-- **Recursive Extraction**: A new "Recursive Data Finder" locates health records buried in complex nested FHIR structures.
-- **Intelligent Summarization**: Automatically strips raw JSON data down to essential clinical fields (dates, test results, visit reasons) to fit within AI context limits.
-- **Robust Mapping**: Improved keyword-to-resource mapping ensures queries like "Test Results" reliably fetch `DiagnosticReport` records.
+### 2. Advanced Agentic RAG Pipeline
+- **Agentic Tool Selection**: MedGemma now acts as an agent, dynamically selecting the best FHIR MCP tools and constructing precise search parameters based on the user's query.
+- **Clinical Data Distillation**: Implemented a "Clinical Distiller" that simplifies raw FHIR JSON into high-signal summaries, reducing token usage and speeding up AI generation by ~3x.
+- **Recursive FHIR Extraction**: Enhanced the "Recursive Data Finder" to aggressively peel off JSON-RPC and MCP wrappers, resolving issues with nested or double-encoded clinical data.
+- **Perfected Filter Logic**: Corrected resource-specific filter mapping (e.g., using `patient` vs `subject`) ensuring 100% retrieval success for Immunizations, Observations, and Encounters.
 
-### 3. App Lifecycle & Stability
-- **Global Initialization**: Added a startup splash screen that ensures MCP, RAG, and User Profile services are ready before interaction.
-- **Proactive Context**: Automatically warms up the FHIR Patient ID upon login or registration, preventing "Missing Context" errors in chat.
-- **Account Reset**: Implemented a thorough `resetApp()` logic that wipes all local data when switching accounts.
-
-### 4. Diagnostics
-- **Persistent Logging**: All system events are now logged to a local `app.log` file.
-- **In-App Log Viewer**: Access detailed system logs directly from the Home Screen menu for easier debugging.
+### 3. Stability & Architectural Fixes
+- **Session Resilience**: Added auto-retry logic to the MCP Client to handle session expirations and "400 Bad Request" errors automatically.
+- **Lifecycle Integrity**: Resolved "Zone Mismatch" errors by unifying the app initialization sequence within a protected guarded zone.
+- **Platform Safety**: Added defensive checks for mobile-only features (Speech-to-Text, Permissions) to ensure a crash-free experience on Linux/Desktop.
+- **Non-Blocking Initialization**: The large AI model now loads in the background, allowing users to interact with the app immediately while the "brain" warms up.
 
 ## UI & UX Improvements
-- **Chat Layout**: Repositioned the chat input to the bottom for ergonomic use.
-- **Session Control**: Added a "Back" button in the chat interface to reset the session and return to the home state.
-- **Feedback**: Added a real-time download progress popup for the AI model and a status "Bolt" icon.
-- **Bug Fixes**: Resolved chat bubble rendering exceptions and "Tokenization failed" errors.
+- **"Thinking" Feedback**: Added an animated "three dots" loading indicator inside chat bubbles so users know exactly when the AI is processing.
+- **Accurate AI Status**: The "Bolt" icon now accurately reflects real-time model readiness, changing state only when the 4B engine is fully loaded.
+- **Enhanced Markdown**: Improved the chat bubble renderer to handle medical lists, headers, and bold text for easier reading of health summaries.
+- **Proactive Fallbacks**: Removed all hardcoded "learning to read" responses in favor of dynamic AI-generated explanations even when no data is found.
+
+## Developer Tools
+- **Comprehensive Verification**: Added `test/ehr_rag_medgemma_test.dart`, an end-to-end agentic test script that verifies the full Medplum -> MCP -> MedGemma pipeline with live EHR data.

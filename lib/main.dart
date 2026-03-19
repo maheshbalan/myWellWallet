@@ -32,48 +32,48 @@ import 'screens/log_viewer_screen.dart';
 import 'test/mcp_sse_test_screen.dart';
 import 'config/app_config.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Logging
-  await LogService.init();
-  LogService.log('Application starting...');
+    // Initialize Logging
+    await LogService.init();
+    LogService.log('Application starting...');
 
-  // Initialize sqflite for desktop (Linux, Windows, macOS)
-  if (Platform.isLinux || Platform.isWindows) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
+    // Initialize sqflite for desktop (Linux, Windows, macOS)
+    if (Platform.isLinux || Platform.isWindows) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
 
-  FlutterError.onError = (details) {
-    FlutterError.dumpErrorToConsole(details);
-  };
+    FlutterError.onError = (details) {
+      FlutterError.dumpErrorToConsole(details);
+    };
 
-  // Show errors in the UI instead of crashing (helps debug SIGABRT)
-  ErrorWidget.builder = (FlutterErrorDetails details) {
-    return Material(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('App error:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text('${details.exception}', style: const TextStyle(fontSize: 14)),
-              if (details.stack != null) ...[
-                const SizedBox(height: 16),
-                Text('${details.stack}', style: const TextStyle(fontSize: 11)),
+    // Show errors in the UI instead of crashing (helps debug SIGABRT)
+    ErrorWidget.builder = (FlutterErrorDetails details) {
+      return Material(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('App error:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('${details.exception}', style: const TextStyle(fontSize: 14)),
+                if (details.stack != null) ...[
+                  const SizedBox(height: 16),
+                  Text('${details.stack}', style: const TextStyle(fontSize: 11)),
+                ],
               ],
-            ],
+            ),
           ),
         ),
-      ),
-    );
-  };
+      );
+    };
 
-  runZonedGuarded(() {
     runApp(const MyWellWalletApp());
   }, (error, stackTrace) {
     debugPrint('Uncaught zone error: $error');
@@ -127,9 +127,9 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
       // 2. Initialize RAG
       await _gemmaRAGService.initialize();
 
-      // 3. Wait for Gemma model to actually load/download 
-      LogService.log('Main: Awaiting Gemma model initialization...');
-      await GemmaModelService.instance.ensureInitialized();
+      // 3. Initialize Gemma model in the background (don't await)
+      LogService.log('Main: Starting background Gemma model initialization...');
+      unawaited(GemmaModelService.instance.ensureInitialized());
 
       // 4. Wait for AuthProvider to load
       int retries = 0;

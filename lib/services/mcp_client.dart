@@ -187,14 +187,10 @@ class MCPClient {
   /// Send MCP request
   Future<Map<String, dynamic>> _sendRequest(
     String method,
-    Map<String, dynamic> params,
-  ) async {
-    if (!_initialized) {
-      await initialize();
-    }
-
-    // Ensure we have a session ID
-    if (_sessionId == null) {
+    Map<String, dynamic> params, {
+    bool isRetry = false,
+  }) async {
+    if (!_initialized || _sessionId == null) {
       await initialize();
     }
 
@@ -203,26 +199,14 @@ class MCPClient {
     _pendingRequests[requestId] = completer;
 
     try {
-      // Build headers with session ID - REQUIRED for all requests after initialize
-      // Accept header must include both application/json and text/event-stream
       final headers = <String, String>{
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
         'X-API-Key': apiKey,
+        'Mcp-Session-Id': _sessionId!,
       };
       
-      // Session ID is REQUIRED in header for all requests after initialization
-      if (_sessionId == null) {
-        throw Exception('Session ID is required but not available. Please reinitialize.');
-      }
-      
-      // Add session ID to header - this is the primary method per MCP spec
-      headers['Mcp-Session-Id'] = _sessionId!;
-      debugPrint('Sending $method request with session ID in header: $_sessionId');
-
-      // Build request body - don't add sessionId to params/arguments
-      // The server should read it from the header
-      final requestParams = Map<String, dynamic>.from(params);
+      debugPrint('Sending $method request with session ID: $_sessionId');
 
       final response = await http.post(
         Uri.parse('$baseUrl/mcp'),
@@ -231,12 +215,12 @@ class MCPClient {
           'jsonrpc': '2.0',
           'id': requestId,
           'method': method,
-          'params': requestParams,
+          'params': params,
         }),
       );
 
       if (response.statusCode == 200) {
-        // Parse SSE response
+        // ... (existing SSE parsing logic)
         final lines = response.body.split('\n');
         Map<String, dynamic>? foundResponse;
         
@@ -244,17 +228,15 @@ class MCPClient {
           if (line.startsWith('data: ')) {
             try {
               final data = jsonDecode(line.substring(6));
-              // Match by request ID
               if (data['id'] != null && data['id'].toString() == requestId.toString()) {
                 foundResponse = data;
                 break;
               }
-              // Also check if it's the only response
               if (foundResponse == null && data['id'] != null) {
                 foundResponse = data;
               }
             } catch (e) {
-              debugPrint('Error parsing SSE line: $e, line: $line');
+              debugPrint('Error parsing SSE line: $e');
             }
           }
         }
@@ -263,17 +245,24 @@ class MCPClient {
           _pendingRequests.remove(requestId);
           if (foundResponse['error'] != null) {
             final errorMsg = foundResponse['error']['message'] ?? 'Unknown error';
+            
+            // If session invalid error and not already retrying, re-initialize
+            if ((errorMsg.contains('session') || errorMsg.contains('Session')) && !isRetry) {
+              debugPrint('Session error detected, re-initializing...');
+              _initialized = false;
+              _sessionId = null;
+              return await _sendRequest(method, params, isRetry: true);
+            }
+            
             completer.completeError(Exception(errorMsg));
           } else {
             completer.complete(foundResponse);
           }
         } else {
-          // No matching response found
           _pendingRequests.remove(requestId);
           completer.completeError(Exception('No response received for request $requestId'));
         }
 
-        // Wait for response with timeout
         return await completer.future.timeout(
           const Duration(seconds: 30),
           onTimeout: () {
@@ -281,17 +270,16 @@ class MCPClient {
             throw TimeoutException('Request timeout');
           },
         );
+      } else if (response.statusCode == 400 && !isRetry) {
+        // Handle 400 Bad Request which often means invalid session
+        _pendingRequests.remove(requestId);
+        debugPrint('HTTP 400 detected, likely invalid session. Re-initializing...');
+        _initialized = false;
+        _sessionId = null;
+        return await _sendRequest(method, params, isRetry: true);
       } else {
         _pendingRequests.remove(requestId);
-        // Try to parse error response
-        try {
-          final errorData = jsonDecode(response.body);
-          final errorMsg = errorData['error']?['message'] ?? 
-                         'HTTP error: ${response.statusCode}';
-          throw Exception(errorMsg);
-        } catch (e) {
-          throw Exception('HTTP error: ${response.statusCode} - ${response.body}');
-        }
+        throw Exception('HTTP error: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       _pendingRequests.remove(requestId);

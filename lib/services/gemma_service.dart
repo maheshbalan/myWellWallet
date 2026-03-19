@@ -28,19 +28,11 @@ class GemmaService {
   }
 
   Stream<String> generateStreamingResponse(String query, Map<String, dynamic>? fhirData) async* {
-    if (fhirData == null || fhirData.isEmpty) {
-      yield 'I couldn\'t find any matching health records. Please ensure your data is synced.';
-      return;
-    }
-
     final gemma = GemmaModelService.instance;
-    final summary = _getSummaryList(fhirData);
+    final List<Map<String, dynamic>> summary = (fhirData != null && fhirData.isNotEmpty) 
+        ? _getSummaryList(fhirData) 
+        : <Map<String, dynamic>>[];
     
-    if (summary.isEmpty) {
-      yield 'I found your health records, but they are in a format I\'m still learning to read. Here is a technical summary:\n\n${jsonEncode(fhirData).substring(0, 200)}...';
-      return;
-    }
-
     // Record user query in history BEFORE generating response
     addToHistory('user', query);
 
@@ -51,38 +43,142 @@ class GemmaService {
           _ragInitialized = true;
         }
         final contextChunks = await _ragService.retrieveContext(query);
-        final prompt = _buildResponsePrompt(query, summary, contextChunks);
         
-        LogService.log('GemmaService: Sending prompt with history to local model...');
+        String prompt;
+        if (fhirData == null || fhirData.isEmpty) {
+          prompt = _buildNoDataResponsePrompt(query, contextChunks);
+        } else if (summary.isEmpty) {
+          prompt = _buildRawDataResponsePrompt(query, fhirData, contextChunks);
+        } else {
+          prompt = _buildResponsePrompt(query, summary, contextChunks);
+        }
+        
+        LogService.log('GemmaService: Generating AI response...');
         
         bool receivedTokens = false;
         String fullResponse = '';
-        await for (final token in gemma.generateStream(prompt)) {
+        
+        // Use a 90-second timeout for the stream on CPU
+        final stream = gemma.generateStream(prompt).timeout(
+          const Duration(seconds: 90),
+          onTimeout: (sink) {
+            LogService.log('GemmaService: MedGemma stream timed out.');
+            sink.close();
+          },
+        );
+
+        await for (final token in stream) {
           receivedTokens = true;
           fullResponse += token;
           yield token;
         }
         
         if (receivedTokens) {
-          // Record model response in history
           addToHistory('model', fullResponse.trim());
         } else {
-          final fallback = _formatSummaryAsMarkdown(summary);
-          addToHistory('model', fallback);
-          yield fallback;
+          LogService.log('GemmaService: AI yielded no tokens. Falling back to structured view.');
+          if (summary.isNotEmpty) {
+            yield _formatSummaryAsMarkdown(summary);
+          } else {
+            yield 'I processed your request but found no clinical records to display. Please ensure your data is synced with the Medplum server.';
+          }
         }
         return;
       } catch (e) {
-        LogService.log('GemmaService: Error $e');
-        final errSummary = 'AI Error. Here is a summary of your records:\n\n${_formatSummaryAsMarkdown(summary)}';
-        addToHistory('model', errSummary);
-        yield errSummary;
+        LogService.log('GemmaService: AI Error: $e');
+        if (summary.isNotEmpty) {
+          yield 'I encountered an error. Here is a summary of your records:\n\n${_formatSummaryAsMarkdown(summary)}';
+        } else {
+          yield 'I encountered an error analyzing your health records.';
+        }
       }
     } else {
-      final fallback = _formatSummaryAsMarkdown(summary);
-      addToHistory('model', fallback);
-      yield fallback;
+      LogService.log('GemmaService: Model not ready, using structured fallback.');
+      if (summary.isNotEmpty) {
+        yield _formatSummaryAsMarkdown(summary);
+      } else {
+        yield 'MedGemma AI is still initializing (~2.5GB model). Please try again in a moment.';
+      }
     }
+  }
+
+  String _buildNoDataResponsePrompt(String query, [List<String>? contextChunks]) {
+    return '''<start_of_turn>user
+You are MyWellWallet, a specialized medical AI assistant.
+The user asked: "$query"
+
+However, no health records were found in the local database or Medplum server for this specific request.
+
+Instructions:
+1. Explain clearly that no records were found matching their query.
+2. Suggest that they may need to sync their data or that the records haven't been created yet.
+3. Keep it professional, supportive, and concise.
+4. Do not mention being an AI.
+<end_of_turn>
+<start_of_turn>model
+''';
+  }
+
+  String _buildRawDataResponsePrompt(String query, Map<String, dynamic> rawData, [List<String>? contextChunks]) {
+    // Truncate raw data if too large for prompt
+    final rawJson = jsonEncode(rawData);
+    final dataSubset = rawJson.length > 4000 ? rawJson.substring(0, 4000) : rawJson;
+
+    return '''<start_of_turn>user
+You are MyWellWallet, a specialized medical AI assistant.
+The user asked: "$query"
+
+Here is the RAW FHIR EHR data from the server. It may contain technical metadata (like "method", "path", "jsonrpc") which you should IGNORE. Focus ONLY on the clinical records found in the "response" or "entry" fields.
+
+Data:
+$dataSubset
+
+Instructions:
+1. Summarize the actual clinical information (vaccines, visits, test results) clearly for the patient.
+2. If the clinical data is empty, explain that no matching records were found.
+3. Use a professional, supportive medical tone.
+4. Do not mention technical fields or being an AI.
+<end_of_turn>
+<start_of_turn>model
+''';
+  }
+
+  String _buildResponsePrompt(String query, List<Map<String, dynamic>> summary, [List<String>? contextChunks]) {
+    final recordsText = summary.map((s) => jsonEncode(s)).join('\n');
+    
+    return '''<start_of_turn>user
+You are MyWellWallet, a specialized medical AI assistant.
+The user asked: "$query"
+
+Here are the specific EHR records retrieved for this request:
+$recordsText
+
+Instructions:
+1. Summarize ONLY the records provided above.
+2. If the records are Immunizations, focus on vaccines and dates. 
+3. If the records are Observations, focus on lab values and vitals.
+4. Mention specific names, values, and dates found in the data.
+5. Use a professional and supportive medical tone.
+6. Be concise and do not mention being an AI.
+<end_of_turn>
+<start_of_turn>model
+''';
+  }
+
+  void clearContext() {
+    _conversationHistory.clear();
+  }
+
+  Map<String, dynamic> _interpretWithRAGContext(String query, List<String> contextChunks, String? patientId) {
+    final lower = query.toLowerCase();
+    String resource = 'Observation';
+    if (lower.contains('visit') || lower.contains('encounter')) resource = 'Encounter';
+    if (lower.contains('med') || lower.contains('drug')) resource = 'MedicationStatement';
+    return {
+      'queryType': 'local',
+      'localQuery': {'resourceType': resource, 'filters': {'limit': 10}},
+      'intent': 'list_data'
+    };
   }
 
   /// Recursively finds a list of resources/entries in a nested map
@@ -90,14 +186,57 @@ class GemmaService {
     if (data is List) return data;
     if (data is! Map) return [];
     
-    if (data.containsKey('entry') && data['entry'] is List) return data['entry'];
-    if (data.containsKey('resources') && data['resources'] is List) return data['resources'];
+    // 1. Peeling off common JSON-RPC and MCP wrappers FIRST
+    if (data.containsKey('result')) {
+      return _findEntries(data['result']);
+    }
+    if (data.containsKey('response')) {
+      return _findEntries(data['response']);
+    }
+    if (data.containsKey('structuredContent')) {
+      return _findEntries(data['structuredContent']);
+    }
+
+    // 2. Handle MCP tool call result format: content[0].text (which is a JSON string)
+    if (data.containsKey('content')) {
+      final content = data['content'];
+      if (content is List && content.isNotEmpty) {
+        final firstContent = content[0];
+        if (firstContent is Map && firstContent.containsKey('text')) {
+          final text = firstContent['text'];
+          if (text is String && text.trim().startsWith('{')) {
+            try {
+              final decoded = jsonDecode(text);
+              LogService.log('GemmaService: Decoded nested JSON from content.text');
+              return _findEntries(decoded);
+            } catch (e) {
+              LogService.log('GemmaService: Failed to decode content.text: $e');
+            }
+          } else if (text is Map) {
+            return _findEntries(text);
+          }
+        }
+      }
+    }
+
+    // 3. Look for the actual data arrays
+    if (data.containsKey('entry')) {
+      final entry = data['entry'];
+      return (entry is List) ? entry : [];
+    }
+    if (data.containsKey('resources')) {
+      final resources = data['resources'];
+      return (resources is List) ? resources : [];
+    }
     
-    if (data.containsKey('result')) return _findEntries(data['result']);
-    if (data.containsKey('response')) return _findEntries(data['response']);
-    if (data.containsKey('structuredContent')) return _findEntries(data['structuredContent']);
-    
-    if (data.containsKey('resourceType') || data.containsKey('type')) return [data];
+    // 4. If it's a single FHIR resource, return it as a list of one
+    if (data.containsKey('resourceType')) {
+      // If it's a Bundle with no entry, it's effectively empty
+      if (data['resourceType'] == 'Bundle' && !data.containsKey('entry')) {
+        return [];
+      }
+      return [data];
+    }
     
     return [];
   }
@@ -115,6 +254,7 @@ class GemmaService {
         final Map<String, dynamic> item = {'Type': type};
 
         final String date = _formatDateString(
+          res['occurrenceDateTime'] ??
           res['effectiveDateTime'] ?? 
           res['period']?['start'] ?? 
           res['date'] ?? 
@@ -132,6 +272,9 @@ class GemmaService {
         } else if (type.contains('Medication')) {
           item['Medication'] = res['medicationCodeableConcept']?['text'] ?? res['medicationReference']?['display'] ?? res['code']?['text'] ?? 'Prescription';
           item['Status'] = res['status'];
+        } else if (type == 'Immunization') {
+          item['Vaccine'] = res['vaccineCode']?['text'] ?? res['vaccineCode']?['coding']?[0]?['display'] ?? 'Vaccination';
+          item['Status'] = res['status'] ?? 'Completed';
         } else {
           item['Details'] = res['id'] ?? 'N/A';
         }
@@ -165,55 +308,5 @@ class GemmaService {
     final s = date.toString();
     if (s.contains('T')) return s.split('T').first;
     return s;
-  }
-
-  String _buildResponsePrompt(String query, List<Map<String, dynamic>> summary, [List<String>? contextChunks]) {
-    final recordsText = summary.map((s) => '- ${s.entries.map((e) => "${e.key}: ${e.value}").join(", ")}').join('\n');
-    
-    final buffer = StringBuffer();
-    buffer.writeln('<start_of_turn>user');
-    buffer.writeln('You are MyWellWallet, a friendly health assistant. Use the history and records below to answer.');
-    buffer.writeln();
-
-    // Add Conversation History (last 4 turns)
-    if (_conversationHistory.isNotEmpty) {
-      buffer.writeln('## RECENT CONVERSATION:');
-      final recent = _conversationHistory.length > 4 
-          ? _conversationHistory.sublist(_conversationHistory.length - 4) 
-          : _conversationHistory;
-      for (var msg in recent) {
-        buffer.writeln('${msg['role'] == 'user' ? 'User' : 'Assistant'}: ${msg['content']}');
-      }
-      buffer.writeln();
-    }
-
-    buffer.writeln('## NEW RECORDS FOR THIS QUESTION:');
-    buffer.writeln(recordsText);
-    buffer.writeln();
-    buffer.writeln('USER QUESTION: "$query"');
-    buffer.writeln();
-    buffer.writeln('INSTRUCTIONS:');
-    buffer.writeln('- Speak like a friendly human expert.');
-    buffer.writeln('- Be concise. No "AI" or "Based on data" disclaimers.');
-    buffer.writeln('<end_of_turn>');
-    buffer.writeln('<start_of_turn>model');
-
-    return buffer.toString();
-  }
-
-  void clearContext() {
-    _conversationHistory.clear();
-  }
-
-  Map<String, dynamic> _interpretWithRAGContext(String query, List<String> contextChunks, String? patientId) {
-    final lower = query.toLowerCase();
-    String resource = 'Observation';
-    if (lower.contains('visit') || lower.contains('encounter')) resource = 'Encounter';
-    if (lower.contains('med') || lower.contains('drug')) resource = 'MedicationStatement';
-    return {
-      'queryType': 'local',
-      'localQuery': {'resourceType': resource, 'filters': {'limit': 10}},
-      'intent': 'list_data'
-    };
   }
 }

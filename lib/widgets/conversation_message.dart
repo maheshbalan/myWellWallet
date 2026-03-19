@@ -109,15 +109,19 @@ class ConversationMessage extends StatelessWidget {
                                   ],
                                 ),
                               isMarkdown
-                                  ? _MarkdownText(text: message, isUser: isUser)
-                                  : Text(
-                                      message,
-                                      style: TextStyle(
-                                        color: isUser ? Colors.white : const Color(0xFF2C3E50),
-                                        fontSize: 15,
-                                        height: 1.5,
-                                      ),
-                                    ),
+                                  ? (message.isEmpty && !isUser)
+                                      ? const _AnimatedThreeDots()
+                                      : _MarkdownText(text: message, isUser: isUser)
+                                  : (message.isEmpty && !isUser)
+                                      ? const _AnimatedThreeDots()
+                                      : Text(
+                                          message,
+                                          style: TextStyle(
+                                            color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                                            fontSize: 15,
+                                            height: 1.5,
+                                          ),
+                                        ),
                             ],
                           ),
                         ),
@@ -146,6 +150,70 @@ class ConversationMessage extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _AnimatedThreeDots extends StatefulWidget {
+  const _AnimatedThreeDots();
+
+  @override
+  State<_AnimatedThreeDots> createState() => _AnimatedThreeDotsState();
+}
+
+class _AnimatedThreeDotsState extends State<_AnimatedThreeDots> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 40,
+      height: 20,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: List.generate(3, (index) {
+          return AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final double delay = index * 0.2;
+              double value = (_controller.value - delay) % 1.0;
+              if (value < 0) value += 1.0;
+              
+              double opacity = 0.3;
+              if (value < 0.5) {
+                opacity = 0.3 + (value * 2 * 0.7);
+              } else {
+                opacity = 1.0 - ((value - 0.5) * 2 * 0.7);
+              }
+
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7B1FA2).withOpacity(opacity.clamp(0.3, 1.0)),
+                  shape: BoxShape.circle,
+                ),
+              );
+            },
+          );
+        }),
       ),
     );
   }
@@ -283,7 +351,8 @@ class _MarkdownText extends StatelessWidget {
     final widgets = <Widget>[];
 
     for (var line in lines) {
-      if (line.trim().isEmpty) {
+      final trimmedLine = line.trim();
+      if (trimmedLine.isEmpty) {
         widgets.add(const SizedBox(height: 8));
         continue;
       }
@@ -320,20 +389,45 @@ class _MarkdownText extends StatelessWidget {
             ),
           ),
         );
-      } else if (line.startsWith('**') && line.endsWith('**')) {
-        // Bold
-        final boldText = line.substring(2, line.length - 2);
+      } else if (line.startsWith('### ')) {
+        // H3
         widgets.add(
           Padding(
-            padding: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.only(bottom: 4, top: 4),
             child: Text(
-              boldText,
+              line.substring(4),
               style: TextStyle(
                 color: isUser ? Colors.white : const Color(0xFF2C3E50),
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                height: 1.5,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                height: 1.4,
               ),
+            ),
+          ),
+        );
+      } else if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
+        // List items
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4, left: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '• ',
+                  style: TextStyle(
+                    color: isUser ? Colors.white : const Color(0xFF7B1FA2),
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Expanded(
+                  child: _RichTextLine(
+                    text: trimmedLine.substring(2),
+                    isUser: isUser,
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -351,18 +445,11 @@ class _MarkdownText extends StatelessWidget {
           ),
         );
       } else {
-        // Regular text
+        // Regular text with support for inline formatting
         widgets.add(
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              line,
-              style: TextStyle(
-                color: isUser ? Colors.white : const Color(0xFF2C3E50),
-                fontSize: 15,
-                height: 1.5,
-              ),
-            ),
+            child: _RichTextLine(text: line, isUser: isUser),
           ),
         );
       }
@@ -374,3 +461,66 @@ class _MarkdownText extends StatelessWidget {
     );
   }
 }
+
+/// Helper to handle inline bolding (**text**)
+class _RichTextLine extends StatelessWidget {
+  final String text;
+  final bool isUser;
+
+  const _RichTextLine({required this.text, required this.isUser});
+
+  @override
+  Widget build(BuildContext context) {
+    final List<TextSpan> spans = [];
+    final RegExp boldRegExp = RegExp(r'\*\*(.*?)\*\*');
+    
+    int lastMatchEnd = 0;
+    for (final Match match in boldRegExp.allMatches(text)) {
+      // Text before bold
+      if (match.start > lastMatchEnd) {
+        spans.add(TextSpan(
+          text: text.substring(lastMatchEnd, match.start),
+        ));
+      }
+      
+      // Bold text
+      spans.add(TextSpan(
+        text: match.group(1),
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ));
+      
+      lastMatchEnd = match.end;
+    }
+    
+    // Text after last match
+    if (lastMatchEnd < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(lastMatchEnd),
+      ));
+    }
+
+    if (spans.isEmpty) {
+      return Text(
+        text,
+        style: TextStyle(
+          color: isUser ? Colors.white : const Color(0xFF2C3E50),
+          fontSize: 15,
+          height: 1.5,
+        ),
+      );
+    }
+
+    return RichText(
+      text: TextSpan(
+        children: spans,
+        style: TextStyle(
+          color: isUser ? Colors.white : const Color(0xFF2C3E50),
+          fontSize: 15,
+          height: 1.5,
+          fontFamily: 'Roboto', // Use a standard font for rich text
+        ),
+      ),
+    );
+  }
+}
+

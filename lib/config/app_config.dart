@@ -1,10 +1,10 @@
 class AppConfig {
-  /// The URL for the Gemma 2 2B IT GGUF model file.
-  /// Using MaziyarPanahi's Q2_K quantization which is ~1.2GB.
-  static const String gemmaModelUrl = 'https://huggingface.co/MaziyarPanahi/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it.Q2_K.gguf';
+  /// The URL for the MedGemma 4B IT GGUF model file.
+  /// Using unsloth's Q4_K_M quantization which is ~2.5GB.
+  static const String gemmaModelUrl = 'https://huggingface.co/unsloth/medgemma-4b-it-GGUF/resolve/main/medgemma-4b-it-Q4_K_M.gguf';
 
   /// The filename to save the model as locally.
-  static const String gemmaModelFileName = 'gemma-2-2b-it.Q2_K.gguf';
+  static const String gemmaModelFileName = 'medgemma-4b-it-Q4_K_M.gguf';
 
   /// FHIR MCP Server configuration
   static const String mcpBaseUrl = 'https://mcp-fhir-server.com';

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -86,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _isDownloadDialogShowing = false;
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gemma model downloaded and ready!')),
+          const SnackBar(content: Text('MedGemma model downloaded and ready!')),
         );
       }
     });
@@ -96,26 +97,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final gemma = GemmaModelService.instance;
     if (gemma.isReady) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Gemma local AI is active and ready.')),
+        const SnackBar(content: Text('MedGemma local AI is active and ready.')),
       );
     } else if (gemma.isDownloading) {
       _showDownloadProgressDialog(gemma.currentProgress);
     } else {
       // Not ready and not downloading, try to initialize
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Starting Gemma initialization...'), duration: Duration(seconds: 2)),
+        const SnackBar(content: Text('Starting MedGemma initialization...'), duration: Duration(seconds: 2)),
       );
       try {
         await gemma.ensureInitialized();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(gemma.isReady ? 'Gemma initialized successfully!' : 'Gemma initialization failed.')),
+            SnackBar(content: Text(gemma.isReady ? 'MedGemma initialized successfully!' : 'MedGemma initialization failed.')),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Gemma Error: $e'), backgroundColor: Colors.red),
+            SnackBar(content: Text('MedGemma Error: $e'), backgroundColor: Colors.red),
           );
         }
       }
@@ -141,7 +142,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    'MyWellWallet is downloading the local Gemma AI model (~1.1GB). This only happens once.',
+                    'MyWellWallet is downloading the specialized MedGemma 4B medical AI model (~2.5GB). This only happens once.',
                     style: TextStyle(fontSize: 14),
                   ),
                   const SizedBox(height: 24),
@@ -214,30 +215,43 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _initializeSpeech() async {
-    // Request one at a time to avoid "already requesting permissions" on iOS
-    // Speech recognition (iOS: Settings > Privacy > Speech Recognition)
-    var speechStatus = await Permission.speech.status;
-    if (!speechStatus.isGranted) {
-      speechStatus = await Permission.speech.request();
+    // Permission handler and Speech to Text are mobile-centric.
+    // Skip or handle defensively on Desktop (Linux/Windows).
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      LogService.log('HomeScreen: Speech/Permissions skipped on non-mobile platform.');
+      if (mounted) setState(() => _speechAvailable = false);
+      return;
     }
-    // Microphone (iOS: Settings > Privacy > Microphone)
-    var micStatus = await Permission.microphone.status;
-    if (!micStatus.isGranted) {
-      micStatus = await Permission.microphone.request();
-    }
-    // Initialize speech_to_text (triggers native Speech framework auth on iOS when needed)
-    final available = await _speech.initialize(
-      onStatus: (status) {
-        if (status == 'done' || status == 'notListening') {
+
+    try {
+      // Request one at a time to avoid "already requesting permissions" on iOS
+      // Speech recognition (iOS: Settings > Privacy > Speech Recognition)
+      var speechStatus = await Permission.speech.status;
+      if (!speechStatus.isGranted) {
+        speechStatus = await Permission.speech.request();
+      }
+      // Microphone (iOS: Settings > Privacy > Microphone)
+      var micStatus = await Permission.microphone.status;
+      if (!micStatus.isGranted) {
+        micStatus = await Permission.microphone.request();
+      }
+      // Initialize speech_to_text (triggers native Speech framework auth on iOS when needed)
+      final available = await _speech.initialize(
+        onStatus: (status) {
+          if (status == 'done' || status == 'notListening') {
+            if (mounted) setState(() => _isListening = false);
+          }
+        },
+        onError: (error) {
+          debugPrint('Speech recognition error: $error');
           if (mounted) setState(() => _isListening = false);
-        }
-      },
-      onError: (error) {
-        debugPrint('Speech recognition error: $error');
-        if (mounted) setState(() => _isListening = false);
-      },
-    );
-    if (mounted) setState(() => _speechAvailable = available && micStatus.isGranted);
+        },
+      );
+      if (mounted) setState(() => _speechAvailable = available && micStatus.isGranted);
+    } catch (e) {
+      LogService.log('HomeScreen: Speech initialization error: $e');
+      if (mounted) setState(() => _speechAvailable = false);
+    }
   }
 
   void _startListening() async {
@@ -422,16 +436,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           
           await for (final token in _gemmaService.generateStreamingResponse(query, fhirData)) {
             fullResponse += token;
-            setState(() {
-              _messages[lastIndex]['message'] = fullResponse;
-            });
+            if (mounted && _messages.length > lastIndex) {
+              setState(() {
+                _messages[lastIndex]['message'] = fullResponse;
+              });
+            }
             // Auto-scroll as text comes in
             _scrollToBottom();
           }
         } else {
-          _addAssistantMessage('I processed your request but found no specific data to display. Please ensure your health records are synced.');
-        }
+          // If result is empty but no error, still let AI provide a friendly "no data found" message
+          // instead of a hardcoded string.
+          setState(() {
+            _messages.add({
+              'isUser': false,
+              'message': '',
+              'timestamp': DateTime.now(),
+              'isMarkdown': true,
+            });
+          });
 
+          final int lastIndex = _messages.length - 1;
+          String fullResponse = '';
+
+          await for (final token in _gemmaService.generateStreamingResponse(query, {})) {
+            fullResponse += token;
+            if (mounted && _messages.length > lastIndex) {
+              setState(() {
+                _messages[lastIndex]['message'] = fullResponse;
+              });
+            }
+            _scrollToBottom();
+          }
+        }
         // Generate follow-up prompts based on query
         _updateFollowUpPrompts(query);
         WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
@@ -564,7 +601,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    _gemmaReady ? 'Gemma' : 'Offline',
+                    _gemmaReady ? 'MedGemma' : 'Offline',
                     style: TextStyle(
                       fontSize: 10,
                       color: _gemmaReady ? Colors.amber.shade700 : Colors.grey,

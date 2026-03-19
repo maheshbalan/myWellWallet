@@ -10,7 +10,7 @@ import 'log_service.dart';
 
 /// GemmaModelService
 ///
-/// Thin wrapper around a local Gemma 2 2B GGUF model running
+/// Thin wrapper around a local MedGemma 4B GGUF model running
 /// via the `llamadart` runtime.
 class GemmaModelService {
   GemmaModelService._internal();
@@ -140,12 +140,12 @@ class GemmaModelService {
     }
   }
 
-  /// Helper to check if a model file exists and is of valid size (~1.2GB)
+  /// Helper to check if a model file exists and is of valid size (~2.5GB)
   Future<bool> _isValidModelFile(File file) async {
     if (!await file.exists()) return false;
     final size = await file.length();
-    // The Q2_K model should be around 1.2GB. We accept anything > 1GB.
-    return size > 1000 * 1024 * 1024;
+    // The MedGemma 4B Q4_K_M model should be around 2.5GB. We accept anything > 1.5GB.
+    return size > 1500 * 1024 * 1024;
   }
 
   Future<String> _ensureModelDownloaded() async {
