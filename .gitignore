@@ -1,3 +1,6 @@
+# Local crash dumps (do not commit)
+crash/
+
 # Miscellaneous
 *.class
 *.log

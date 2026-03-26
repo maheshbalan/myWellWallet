@@ -154,8 +154,9 @@ class GemmaRAGService {
   /// Execute a query plan and format results
   Future<Map<String, dynamic>> executeQueryPlan(
     Map<String, dynamic> queryPlan,
-    String patientId,
-  ) async {
+    String patientId, {
+    String? appUserId,
+  }) async {
     try {
       final resourceType = queryPlan['resourceType'] as String?;
       if (resourceType == null) {
@@ -174,6 +175,8 @@ class GemmaRAGService {
         resourceType,
         filters: filters,
         recordIndex: recordIndex,
+        appUserId: appUserId,
+        queryPlan: queryPlan,
       );
 
       if (resources.isEmpty) {
@@ -215,17 +218,31 @@ class GemmaRAGService {
     String? patientId,
     List<String> contextChunks,
   ) {
+    final docContext = contextChunks.isEmpty
+        ? ''
+        : () {
+            final j = contextChunks.take(8).join('\n---\n');
+            final t = j.length > 8000 ? '${j.substring(0, 8000)}…' : j;
+            return '\n\nRelevant documentation:\n$t\n';
+          }();
+
     return '''<start_of_turn>user
 You are a FHIR clinical agent. Convert this query into a FHIR JSON query plan.
 Patient ID: $patientId
-
+User question: "$query"
+$docContext
 Guidelines:
 - Use subject=Patient/$patientId for: Observation, Encounter, DiagnosticReport.
 - Use patient=Patient/$patientId for: Immunization, MedicationStatement, Condition, AllergyIntolerance.
 - Use request_generic_resource for resources not listed.
+- Apple Health syncs into SQLite (health_glucose, health_heart_rate, health_steps, health_blood_pressure, health_lab_results) and is merged into FHIR-like Observations with meta.tag apple-health. LOINC examples: glucose 2339-0 / HbA1c 4548-4, steps 55423-8, heart rate 8867-4.
+- For glucose/CGM/blood sugar/A1c questions you MUST narrow results so step counts do not dominate:
+  "resourceType": "Observation", "filters": {"_count": 50, "_sort": "-date", "codeSearch": "glucose"}, "dataSources": ["ehr-fhir", "apple-health"]
+- For steps/walking only: "codeSearch": "steps" with the same dataSources.
+- For generic vitals without a single focus, still use "dataSources": ["ehr-fhir", "apple-health"] but omit codeSearch only if the user truly wants all vitals.
 
 Response Format:
-{"needsClarification": false, "queryPlan": {"resourceType": "TYPE", "filters": {"_count": 10, "_sort": "-date"}}}
+{"needsClarification": false, "queryPlan": {"resourceType": "TYPE", "filters": {"_count": 10, "_sort": "-date"}, "dataSources": ["ehr-fhir", "apple-health"]}}
 
 Respond ONLY with valid JSON.
 <end_of_turn>
@@ -375,8 +392,32 @@ Respond ONLY with valid JSON.
   Map<String, dynamic>? _interpretWithRules(String query, List<String> contextChunks) {
     final lowerQuery = query.toLowerCase();
     LogService.log('GemmaRAGService: _interpretWithRules query: "$lowerQuery"');
-    
-    // 1. High-priority keyword matches for Presets
+
+    // 1. Glucose / CGM / A1c before generic Observation (avoids step-count rows crowding merged Apple Health data).
+    if (_matchesGlucoseIntent(lowerQuery)) {
+      LogService.log('GemmaRAGService: Preset match -> Observation (glucose / Apple Health + EHR)');
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': 'Observation',
+          'filters': {'_count': 50, '_sort': '-date', 'codeSearch': 'glucose'},
+          'dataSources': ['ehr-fhir', 'apple-health'],
+        },
+      };
+    }
+
+    // 2. Steps / activity — use word boundaries so "step" does not match unrelated words.
+    if (_matchesStepsIntent(lowerQuery)) {
+      LogService.log('GemmaRAGService: Preset match -> Observation (steps / Apple Health)');
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': 'Observation',
+          'filters': {'_count': 30, '_sort': '-date', 'codeSearch': 'steps'},
+          'dataSources': ['ehr-fhir', 'apple-health'],
+        },
+      };
+    }
     if (_matches(lowerQuery, ['immunization', 'vaccine', 'vaccination', 'shot'])) {
       LogService.log('GemmaRAGService: Preset match -> Immunization');
       return {
@@ -407,18 +448,26 @@ Respond ONLY with valid JSON.
         }
       };
     }
-    if (_matches(lowerQuery, ['observation', 'lab value', 'level', 'cholesterol', 'glucose', 'blood pressure', 'vital'])) {
+    if (_matches(lowerQuery, ['observation', 'lab value', 'level', 'cholesterol', 'blood pressure', 'vital', 'heart rate']) ||
+        RegExp(r'\bhr\b').hasMatch(lowerQuery)) {
       LogService.log('GemmaRAGService: Keyword match -> Observation');
+      final specific = _extractSpecificValue(lowerQuery);
+      final filters = <String, dynamic>{
+        '_count': specific != null ? 40 : 20,
+        '_sort': '-date',
+        if (specific != null) 'codeSearch': specific,
+      };
       return {
         'needsClarification': false,
         'queryPlan': {
           'resourceType': 'Observation',
-          'filters': {'_count': 10, '_sort': '-date'}
-        }
+          'filters': filters,
+          'dataSources': ['ehr-fhir', 'apple-health'],
+        },
       };
     }
 
-    // 2. Try RAG service translation
+    // 3. Try RAG service translation
     String? translated = _ragService.translateHumanTerm(lowerQuery);
     if (translated == null) {
       final words = lowerQuery.split(' ');
@@ -436,6 +485,21 @@ Respond ONLY with valid JSON.
     }
 
     if (translated != null) {
+      if (translated == 'Observation') {
+        final specific = _extractSpecificValue(lowerQuery);
+        return {
+          'needsClarification': false,
+          'queryPlan': {
+            'resourceType': 'Observation',
+            'filters': {
+              '_count': specific != null ? 40 : 20,
+              '_sort': '-date',
+              if (specific != null) 'codeSearch': specific,
+            },
+            'dataSources': ['ehr-fhir', 'apple-health'],
+          },
+        };
+      }
       return {
         'needsClarification': false,
         'queryPlan': {
@@ -514,6 +578,27 @@ Respond ONLY with valid JSON.
   /// Helper to match query against keywords
   bool _matches(String query, List<String> keywords) {
     return keywords.any((keyword) => query.contains(keyword));
+  }
+
+  static final RegExp _stepsIntent = RegExp(
+    r'\b(steps?|walking|walked|step\s*count|activity\s+rings?)\b',
+    caseSensitive: false,
+  );
+
+  bool _matchesStepsIntent(String q) => _stepsIntent.hasMatch(q);
+
+  bool _matchesGlucoseIntent(String q) {
+    if (RegExp(r'\b(glucose|glycemic)\b', caseSensitive: false).hasMatch(q)) {
+      return true;
+    }
+    if (q.contains('blood sugar') || q.contains('blood glucose')) return true;
+    if (RegExp(r'\b(cgm|dexcom|freestyle\s*libre|libre)\b', caseSensitive: false).hasMatch(q)) {
+      return true;
+    }
+    if (RegExp(r'\b(a1c|hba1c|hemoglobin\s*a1c)\b', caseSensitive: false).hasMatch(q)) {
+      return true;
+    }
+    return false;
   }
 
   /// Add message to conversation history

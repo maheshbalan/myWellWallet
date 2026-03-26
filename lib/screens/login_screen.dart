@@ -37,6 +37,16 @@ class _LoginScreenState extends State<LoginScreen> {
       final success = await authProvider.authenticate();
 
       if (success && mounted) {
+        await authProvider.ensureCurrentUserLoaded();
+        if (!mounted) return;
+        if (authProvider.currentUser == null) {
+          setState(() {
+            _showPinInput = true;
+            _isLoading = false;
+            _errorMessage = 'Could not load your profile. Try PIN or restart the app.';
+          });
+          return;
+        }
         // Establish context before leaving login screen
         final user = authProvider.currentUser;
         if (user != null) {
@@ -108,6 +118,15 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (authenticated && mounted) {
+        await authProvider.ensureCurrentUserLoaded();
+        if (!mounted) return;
+        if (authProvider.currentUser == null) {
+          setState(() {
+            _errorMessage = 'Could not load your profile. Please try again.';
+            _isLoading = false;
+          });
+          return;
+        }
         // Establish context before leaving login screen
         final user = authProvider.currentUser;
         if (user != null) {

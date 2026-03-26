@@ -238,150 +238,104 @@ final allResources = await db.getAllPatientResources(patientId);
 
 // Get patient bundle
 final bundle = await db.getPatientBundle(patientId);
-
-// Get blood test / lab results (decreasing chronological order)
-final labResults = await db.getHealthLabResults(userId);
 ```
 
-## Apple Health Tables (Diabetes & Heart-Centric)
+## Apple Health tables (device / HealthKit)
 
-Used when Apple Health is connected (iOS). All tables are keyed by `user_id` (app user, not FHIR patient).
+These tables store **Apple Health** (and similar) metrics keyed by **`user_id`** = `users.id`. They are **not** FHIR JSON blobs; they are **not** read by legacy `getPatientResources` unless the app merges them (see **Integrated clinical data model** below).
 
-### 4. `health_glucose`
+### `health_glucose`
 
-CGM / blood glucose readings (mg/dL).
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT PK | Stable row id (often HealthKit uuid) |
+| `user_id` | TEXT | FK to `users.id` |
+| `value_real` | REAL | Numeric value |
+| `unit` | TEXT | e.g. `mg/dL` |
+| `source_bundle_id` | TEXT | Optional provenance |
+| `recorded_at` | TEXT | ISO 8601 |
+| `created_at` | TEXT | ISO 8601 |
 
-```sql
-CREATE TABLE health_glucose (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  value_real REAL NOT NULL,
-  unit TEXT NOT NULL DEFAULT 'mg/dL',
-  source_bundle_id TEXT,
-  recorded_at TEXT NOT NULL,
-  created_at TEXT NOT NULL
-)
-```
+### `health_heart_rate`
 
-- `recorded_at`: When the reading was taken (ISO 8601).
-- Index: `idx_health_glucose_user_recorded ON health_glucose(user_id, recorded_at DESC)`.
+| Column | Type | Description |
+|--------|------|-------------|
+| `id`, `user_id`, `value_real`, `unit`, `source_bundle_id`, `recorded_at`, `created_at` | | Same pattern as glucose |
 
-### 5. `health_heart_rate`
+### `health_steps`
 
-Heart rate in beats per minute.
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT PK | |
+| `user_id` | TEXT | |
+| `count` | INTEGER | Step count |
+| `distance_meters` | REAL | Optional |
+| `start_at`, `end_at` | TEXT | Interval |
+| `source_bundle_id`, `created_at` | TEXT | |
 
-```sql
-CREATE TABLE health_heart_rate (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  value_real REAL NOT NULL,
-  unit TEXT NOT NULL DEFAULT 'bpm',
-  source_bundle_id TEXT,
-  recorded_at TEXT NOT NULL,
-  created_at TEXT NOT NULL
-)
-```
+### `health_blood_pressure`
 
-### 6. `health_steps`
+| Column | Type | Description |
+|--------|------|-------------|
+| `id`, `user_id` | TEXT | |
+| `systolic_real`, `diastolic_real` | REAL | mmHg |
+| `unit`, `source_bundle_id`, `recorded_at`, `created_at` | TEXT | |
 
-Step count (and optional distance) for a time interval.
+### `health_lab_results`
 
-```sql
-CREATE TABLE health_steps (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  count INTEGER NOT NULL,
-  distance_meters REAL,
-  start_at TEXT NOT NULL,
-  end_at TEXT NOT NULL,
-  source_bundle_id TEXT,
-  created_at TEXT NOT NULL
-)
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| `id`, `user_id` | TEXT | |
+| `name` | TEXT | Display name |
+| `loinc_code` | TEXT | Optional LOINC |
+| `value_numeric`, `value_string`, `unit` | | Value |
+| `reference_range_*`, `source_name`, `specimen_type` | | Optional clinical context |
+| `recorded_at`, `created_at` | TEXT | |
 
-### 7. `health_blood_pressure`
+### `health_sync_settings`
 
-Systolic and diastolic (mmHg).
+Per-user Health sync preferences and last sync timestamps.
 
-```sql
-CREATE TABLE health_blood_pressure (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  systolic_real REAL NOT NULL,
-  diastolic_real REAL NOT NULL,
-  unit TEXT NOT NULL DEFAULT 'mmHg',
-  source_bundle_id TEXT,
-  recorded_at TEXT NOT NULL,
-  created_at TEXT NOT NULL
-)
-```
+---
 
-### 8. `health_sync_settings`
+## Integrated clinical data model (EHR FHIR + Apple Health)
 
-Per-user Apple Health connection and sync interval.
+**Full architecture:** see **`INTEGRATED_HEALTH_EHR_DESIGN.md`** (bundled for RAG).
 
-```sql
-CREATE TABLE health_sync_settings (
-  user_id TEXT PRIMARY KEY,
-  sync_interval_hours INTEGER NOT NULL DEFAULT 24,
-  last_synced_at TEXT,
-  connected_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-)
-```
+### Two physical stores, one logical model
 
-- `sync_interval_hours`: 6, 24, 168 (weekly), etc.
-- `last_synced_at`: Last successful sync (ISO 8601).
-- `connected_at`: When the user connected Apple Health.
+| Store | Table(s) | Foreign key scope | Content shape |
+|-------|----------|-------------------|---------------|
+| EHR (MCH, etc.) | `fhir_resources`, `fhir_patients` | `patient_id` = FHIR Patient id | Native FHIR JSON in `resource_data` |
+| Apple Health | `health_*` | `user_id` = `users.id` | Typed relational rows |
 
-### 9. `health_lab_results`
+### Unified query semantics (for MedGemma / RAG)
 
-Blood test / lab results (e.g. from Apple Health Clinical Records, Quest, Sonora Quest, or imported from FHIR Observation).
+- The **LLM query plan** should stay **FHIR-oriented** (`resourceType`, `filters`, optional `dataSources`).
+- The **executor** merges:
+  - rows from `fhir_resources` for the current **`patient_id`**, and
+  - when enabled, **synthetic FHIR Observation** maps built from `health_*` for the current **`user_id`** linked to that patient context.
+- Every merged item carries **provenance** (`meta.source` / `meta.tag`) so answers can distinguish **clinic record** vs **Apple Health**.
+
+### SQL examples (Apple tables only)
 
 ```sql
-CREATE TABLE health_lab_results (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  loinc_code TEXT,
-  value_numeric REAL,
-  value_string TEXT,
-  unit TEXT,
-  reference_range_low REAL,
-  reference_range_high REAL,
-  reference_range_text TEXT,
-  source_name TEXT,
-  source_bundle_id TEXT,
-  specimen_type TEXT,
-  recorded_at TEXT NOT NULL,
-  created_at TEXT NOT NULL
-)
-```
-
-**Columns:**
-- `id`: Unique row identifier (e.g. source + timestamp).
-- `user_id`: App user (same as other health_* tables).
-- `name`: Test name (e.g. "Total Cholesterol", "Glucose").
-- `loinc_code`: Optional LOINC code.
-- `value_numeric` / `value_string`: Result value (use one).
-- `unit`: Unit of measure (e.g. mg/dL, mmol/L).
-- `reference_range_*`: Normal range (numeric low/high or text).
-- `source_name`: Lab or app name (e.g. "Quest", "Sonora Quest").
-- `source_bundle_id`: HealthKit source identifier when from Apple Health.
-- `specimen_type`: Optional (e.g. blood, serum).
-- `recorded_at`: When the sample was taken (ISO 8601).
-- `created_at`: When the row was inserted.
-
-**Index:**
-- `idx_health_lab_results_user_recorded` on `(user_id, recorded_at DESC)` for chronological queries.
-
-**Query example – blood test results in decreasing chronological order:**
-```sql
-SELECT * FROM health_lab_results
+-- Recent glucose from Apple Health for a user
+SELECT * FROM health_glucose
 WHERE user_id = ?
 ORDER BY recorded_at DESC
-LIMIT 200;
+LIMIT 50;
+
+-- Steps aggregates
+SELECT * FROM health_steps
+WHERE user_id = ?
+ORDER BY start_at DESC
+LIMIT 30;
 ```
+
+Cross-store questions (“compare my watch HR to clinic vitals”) require **application code** to run both-style queries (or merged Observation list), not a single SQL join, unless Phase 2 materializes Apple data into `fhir_resources`.
+
+---
 
 ## Notes
 
@@ -396,6 +350,4 @@ LIMIT 200;
 5. **JSON Functions**: SQLite 3.38+ supports JSON functions. For older versions, parse JSON in Dart code.
 
 6. **Pagination**: Use `LIMIT` and `OFFSET` for pagination when dealing with large result sets.
-
-7. **Lab results**: The `health_lab_results` table stores blood test results (e.g. from Apple Health Clinical Records or Quest/Sonora Quest). The Health UI shows them in **decreasing chronological order** (newest first). Populate via `DatabaseService.insertHealthLabResults` when the HealthKit lab result type is available or when importing from FHIR Observation (category laboratory).
 

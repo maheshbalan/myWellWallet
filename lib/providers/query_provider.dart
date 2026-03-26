@@ -5,7 +5,8 @@ import '../services/gemma_service.dart';
 import '../services/local_query_service.dart';
 import '../services/gemma_rag_service.dart';
 import '../services/log_service.dart';
-import '../providers/patient_provider.dart';
+import 'auth_provider.dart';
+import 'patient_provider.dart';
 
 class QueryProvider with ChangeNotifier {
   final MCPClient mcpClient;
@@ -14,7 +15,8 @@ class QueryProvider with ChangeNotifier {
   LocalQueryService? _localQueryService;
   GemmaRAGService? _gemmaRAGService;
   PatientProvider? _patientProvider;
-  
+  AuthProvider? _authProvider;
+
   String? _lastQuery;
   Map<String, dynamic>? _lastResult;
   bool _isProcessing = false;
@@ -38,6 +40,10 @@ class QueryProvider with ChangeNotifier {
     if (provider.foundPatient != null) {
       _currentPatientId = provider.foundPatient!.id;
     }
+  }
+
+  void setAuthProvider(AuthProvider provider) {
+    _authProvider = provider;
   }
 
   String? get lastQuery => _lastQuery;
@@ -89,7 +95,11 @@ class QueryProvider with ChangeNotifier {
         if (ragResult['type'] == 'queryPlan') {
           final queryPlan = ragResult['queryPlan'] as Map<String, dynamic>;
           LogService.log('QueryProvider: Executing query plan for ${queryPlan['resourceType']}');
-          final executionResult = await _gemmaRAGService!.executeQueryPlan(queryPlan, _currentPatientId!);
+          final executionResult = await _gemmaRAGService!.executeQueryPlan(
+            queryPlan,
+            _currentPatientId!,
+            appUserId: _authProvider?.currentUser?.id,
+          );
           LogService.log('QueryProvider: Execution result type: ${executionResult['type']}');
           
           if (executionResult['type'] == 'success') {
@@ -148,6 +158,8 @@ class QueryProvider with ChangeNotifier {
             resourceType,
             filters: filters,
             recordIndex: recordIndex,
+            appUserId: _authProvider?.currentUser?.id,
+            queryPlan: localQuery,
           );
           
           if (localResources.isNotEmpty) {

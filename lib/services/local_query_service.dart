@@ -10,65 +10,79 @@ class LocalQueryService {
 
   LocalQueryService({required this.databaseService});
 
-  /// Query local database for FHIR resources
-  /// 
-  /// [patientId] - Patient ID to query
-  /// [resourceType] - FHIR resource type (e.g., "Encounter", "Observation")
-  /// [filters] - Optional filters (e.g., {"sort": "-date", "limit": 10, "codeSearch": "cholesterol"})
-  /// [recordIndex] - Optional specific record index (0-based)
-  /// 
-  /// Returns list of FHIR resources or empty list if not found
+  /// Query local database for FHIR resources (EHR) merged with Apple Health when applicable.
+  ///
+  /// [queryPlan] may include `dataSources`: `ehr-fhir`, `apple-health`. If omitted,
+  /// [Observation] defaults to both; other types use EHR only.
+  /// [appUserId] must be set to merge Apple Health (`users.id`).
   Future<List<Map<String, dynamic>>> queryLocal(
     String patientId,
     String resourceType, {
     Map<String, dynamic>? filters,
     int? recordIndex,
+    String? appUserId,
+    Map<String, dynamic>? queryPlan,
   }) async {
     try {
-      debugPrint('Querying local database: patientId=$patientId, resourceType=$resourceType');
-      
-      // Get resources from database
-      final resources = await databaseService.getPatientResources(patientId, resourceType);
-      
-      if (resources.isEmpty) {
-        debugPrint('No local resources found for $resourceType');
+      debugPrint(
+        'Querying local database: patientId=$patientId, resourceType=$resourceType, '
+        'appUserId=${appUserId != null ? "set" : "null"}',
+      );
+
+      final sources = _dataSourcesFromPlan(queryPlan, resourceType);
+      final effFilters = _normalizeFilters(filters);
+
+      final merged = <Map<String, dynamic>>[];
+
+      if (sources.contains('ehr-fhir')) {
+        final ehr = await databaseService.getPatientResources(patientId, resourceType);
+        for (final raw in ehr) {
+          merged.add(_ensureEhrProvenance(Map<String, dynamic>.from(raw)));
+        }
+        debugPrint('EHR $resourceType: ${ehr.length} rows');
+      }
+
+      if (sources.contains('apple-health') &&
+          resourceType == 'Observation' &&
+          appUserId != null &&
+          appUserId.isNotEmpty) {
+        final apple = await _appleHealthAsObservations(patientId, appUserId);
+        merged.addAll(apple);
+        debugPrint('Apple Health as Observation: ${apple.length} rows');
+      }
+
+      if (merged.isEmpty) {
+        debugPrint('No local resources after merge');
         return [];
       }
-      
-      debugPrint('Found ${resources.length} local resources for $resourceType');
-      
-      // Apply filters if provided
-      var filteredResources = resources;
-      
-      if (filters != null) {
-        // Filter by code search (for Observations - cholesterol, glucose, etc.)
-        if (filters.containsKey('codeSearch')) {
-          final codeSearch = filters['codeSearch'] as String?;
+
+      var filteredResources = merged;
+
+      if (effFilters != null) {
+        if (effFilters.containsKey('codeSearch')) {
+          final codeSearch = effFilters['codeSearch'] as String?;
           if (codeSearch != null) {
             filteredResources = _filterByCodeSearch(filteredResources, codeSearch);
-            debugPrint('Filtered to ${filteredResources.length} resources matching "$codeSearch"');
+            debugPrint('Filtered to ${filteredResources.length} matching "$codeSearch"');
           }
         }
-        
-        // Sort by date if requested
-        if (filters.containsKey('sort')) {
-          final sort = filters['sort'] as String?;
+
+        if (effFilters.containsKey('sort')) {
+          final sort = effFilters['sort'] as String?;
           if (sort != null) {
             filteredResources = _sortResources(filteredResources, sort);
           }
         }
-        
-        // Limit results if requested
-        if (filters.containsKey('limit')) {
-          final limit = filters['limit'] as int?;
+
+        if (effFilters.containsKey('limit')) {
+          final limit = _asInt(effFilters['limit']);
           if (limit != null && limit > 0) {
             filteredResources = filteredResources.take(limit).toList();
           }
         }
-        
-        // Filter by status if requested
-        if (filters.containsKey('status')) {
-          final status = filters['status'] as String?;
+
+        if (effFilters.containsKey('status')) {
+          final status = effFilters['status'] as String?;
           if (status != null) {
             filteredResources = filteredResources.where((resource) {
               final resourceStatus = resource['status'] as String?;
@@ -77,23 +91,280 @@ class LocalQueryService {
           }
         }
       }
-      
-      // Apply record index if specified (for "record 8" type queries)
+
       if (recordIndex != null && recordIndex >= 0) {
         if (recordIndex < filteredResources.length) {
           filteredResources = [filteredResources[recordIndex]];
           debugPrint('Returning specific record at index $recordIndex');
         } else {
-          debugPrint('Record index $recordIndex out of range (${filteredResources.length} records available)');
+          debugPrint(
+            'Record index $recordIndex out of range (${filteredResources.length} records available)',
+          );
           return [];
         }
       }
-      
+
       return filteredResources;
     } catch (e) {
       debugPrint('Error querying local database: $e');
       return [];
     }
+  }
+
+  static List<String> _dataSourcesFromPlan(
+    Map<String, dynamic>? queryPlan,
+    String resourceType,
+  ) {
+    final raw = queryPlan?['dataSources'];
+    if (raw is List && raw.isNotEmpty) {
+      return raw.map((e) => e.toString()).toList();
+    }
+    if (resourceType == 'Observation') {
+      return ['ehr-fhir', 'apple-health'];
+    }
+    return ['ehr-fhir'];
+  }
+
+  Map<String, dynamic>? _normalizeFilters(Map<String, dynamic>? filters) {
+    if (filters == null) return null;
+    final m = Map<String, dynamic>.from(filters);
+    if (m.containsKey('_count') && !m.containsKey('limit')) {
+      m['limit'] = _asInt(m['_count']);
+    }
+    if (m.containsKey('_sort') && !m.containsKey('sort')) {
+      m['sort'] = m['_sort'];
+    }
+    return m;
+  }
+
+  int? _asInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
+  }
+
+  Map<String, dynamic> _ensureEhrProvenance(Map<String, dynamic> r) {
+    if (_hasProvenanceCode(r, 'ehr-fhir')) return r;
+    final meta = r['meta'] is Map
+        ? Map<String, dynamic>.from(r['meta'] as Map)
+        : <String, dynamic>{};
+    final tags = <dynamic>[
+      ...((meta['tag'] as List?) ?? const []),
+      {
+        'system': 'urn:mywellwallet:provenance',
+        'code': 'ehr-fhir',
+        'display': 'EHR / FHIR server',
+      },
+    ];
+    meta['tag'] = tags;
+    r['meta'] = meta;
+    return r;
+  }
+
+  bool _hasProvenanceCode(Map<String, dynamic> r, String code) {
+    final meta = r['meta'];
+    if (meta is! Map) return false;
+    final tags = meta['tag'];
+    if (tags is! List) return false;
+    for (final t in tags) {
+      if (t is Map && t['code'] == code) return true;
+    }
+    return false;
+  }
+
+  Map<String, dynamic> _appleMeta() => {
+        'source': 'https://apple.com/health',
+        'tag': [
+          {
+            'system': 'urn:mywellwallet:provenance',
+            'code': 'apple-health',
+            'display': 'Apple Health',
+          },
+        ],
+      };
+
+  Future<List<Map<String, dynamic>>> _appleHealthAsObservations(
+    String fhirPatientId,
+    String userId,
+  ) async {
+    const cap = 150;
+    final out = <Map<String, dynamic>>[];
+
+    final glucose = await databaseService.getHealthGlucose(userId, limit: cap);
+    for (final row in glucose) {
+      final id = row['id'] as String;
+      final dt = (row['recorded_at'] as DateTime).toIso8601String();
+      out.add({
+        'resourceType': 'Observation',
+        'id': 'ah-glucose-$id',
+        'status': 'final',
+        'code': {
+          'coding': [
+            {
+              'system': 'http://loinc.org',
+              'code': '2339-0',
+              'display': 'Glucose [Mass/volume] in Blood',
+            },
+          ],
+          'text': 'Blood glucose (Apple Health)',
+        },
+        'subject': {'reference': 'Patient/$fhirPatientId'},
+        'effectiveDateTime': dt,
+        'valueQuantity': {
+          'value': row['value'],
+          'unit': row['unit'] ?? 'mg/dL',
+        },
+        'meta': _appleMeta(),
+      });
+    }
+
+    final hr = await databaseService.getHealthHeartRate(userId, limit: cap);
+    for (final row in hr) {
+      final id = row['id'] as String;
+      final dt = (row['recorded_at'] as DateTime).toIso8601String();
+      out.add({
+        'resourceType': 'Observation',
+        'id': 'ah-hr-$id',
+        'status': 'final',
+        'code': {
+          'coding': [
+            {
+              'system': 'http://loinc.org',
+              'code': '8867-4',
+              'display': 'Heart rate',
+            },
+          ],
+          'text': 'Heart rate (Apple Health)',
+        },
+        'subject': {'reference': 'Patient/$fhirPatientId'},
+        'effectiveDateTime': dt,
+        'valueQuantity': {
+          'value': row['value'],
+          'unit': row['unit'] ?? '/min',
+        },
+        'meta': _appleMeta(),
+      });
+    }
+
+    final bp = await databaseService.getHealthBloodPressure(userId, limit: cap);
+    for (final row in bp) {
+      final id = row['id'] as String;
+      final dt = (row['recorded_at'] as DateTime).toIso8601String();
+      out.add({
+        'resourceType': 'Observation',
+        'id': 'ah-bp-$id',
+        'status': 'final',
+        'code': {
+          'coding': [
+            {
+              'system': 'http://loinc.org',
+              'code': '85354-9',
+              'display': 'Blood pressure panel',
+            },
+          ],
+          'text': 'Blood pressure (Apple Health)',
+        },
+        'subject': {'reference': 'Patient/$fhirPatientId'},
+        'effectiveDateTime': dt,
+        'component': [
+          {
+            'code': {
+              'coding': [
+                {'system': 'http://loinc.org', 'code': '8480-6', 'display': 'Systolic'},
+              ],
+            },
+            'valueQuantity': {
+              'value': row['systolic'],
+              'unit': row['unit'] ?? 'mmHg',
+            },
+          },
+          {
+            'code': {
+              'coding': [
+                {'system': 'http://loinc.org', 'code': '8462-4', 'display': 'Diastolic'},
+              ],
+            },
+            'valueQuantity': {
+              'value': row['diastolic'],
+              'unit': row['unit'] ?? 'mmHg',
+            },
+          },
+        ],
+        'meta': _appleMeta(),
+      });
+    }
+
+    final steps = await databaseService.getHealthSteps(userId, limit: cap);
+    for (final row in steps) {
+      final id = row['id'] as String;
+      final start = (row['start_at'] as DateTime).toIso8601String();
+      final end = (row['end_at'] as DateTime).toIso8601String();
+      out.add({
+        'resourceType': 'Observation',
+        'id': 'ah-steps-$id',
+        'status': 'final',
+        'code': {
+          'coding': [
+            {
+              'system': 'http://loinc.org',
+              'code': '55423-8',
+              'display': 'Number of steps in 24 hour Measured',
+            },
+          ],
+          'text': 'Step count (Apple Health)',
+        },
+        'subject': {'reference': 'Patient/$fhirPatientId'},
+        'effectiveDateTime': end,
+        'effectivePeriod': {
+          'start': start,
+          'end': end,
+        },
+        'valueQuantity': {
+          'value': row['count'],
+          'unit': 'steps',
+        },
+        'meta': _appleMeta(),
+      });
+    }
+
+    final labs = await databaseService.getHealthLabResults(userId, limit: cap);
+    for (final row in labs) {
+      final id = row['id'] as String;
+      final dt = (row['recorded_at'] as DateTime).toIso8601String();
+      final loinc = row['loinc_code'] as String?;
+      final coding = <Map<String, dynamic>>[];
+      if (loinc != null && loinc.isNotEmpty) {
+        coding.add({
+          'system': 'http://loinc.org',
+          'code': loinc,
+          'display': row['name'] as String,
+        });
+      }
+      final obs = <String, dynamic>{
+        'resourceType': 'Observation',
+        'id': 'ah-lab-$id',
+        'status': 'final',
+        'code': {
+          if (coding.isNotEmpty) 'coding': coding,
+          'text': row['name'] as String,
+        },
+        'subject': {'reference': 'Patient/$fhirPatientId'},
+        'effectiveDateTime': dt,
+        'meta': _appleMeta(),
+      };
+      if (row['value_numeric'] != null) {
+        obs['valueQuantity'] = {
+          'value': row['value_numeric'],
+          'unit': row['unit'],
+        };
+      } else if (row['value_string'] != null) {
+        obs['valueString'] = row['value_string'];
+      }
+      out.add(obs);
+    }
+
+    return out;
   }
   
   /// Filter resources by code search (for Observations)
@@ -107,11 +378,17 @@ class LocalQueryService {
     final codeMappings = {
       'cholesterol': ['2093-3', '2085-9', '2089-1', '2571-8'], // Total, LDL, HDL, Triglycerides
       'glucose': ['2339-0', '4548-4'], // Glucose, HbA1c
+      'blood sugar': ['2339-0', '4548-4'],
+      'cgm': ['2339-0', '4548-4'],
+      'hba1c': ['4548-4'],
+      'a1c': ['4548-4'],
       'blood pressure': ['85354-9', '8480-6', '8462-4'], // BP, Systolic, Diastolic
       'hemoglobin': ['718-7', '4548-4'], // HGB, HbA1c
       'creatinine': ['2160-0'],
       'sodium': ['2951-2'],
       'potassium': ['2823-3'],
+      'steps': ['55423-8', '41950-7'],
+      'walking': ['55423-8', '41950-7'],
     };
     
     final codesToSearch = codeMappings[lowerSearch] ?? [];

@@ -56,17 +56,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     _scrollController.addListener(_onScroll);
     // Request microphone and speech (one place only) so the app appears in Settings > Privacy (iOS)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _syncAuthUserWithRouter();
+      if (!mounted) return;
       _initializeSpeech();
       _checkGemmaStatus();
       _listenToDownloadProgress();
-      
+
       // If model is already downloading when we enter the screen, show the dialog
       if (GemmaModelService.instance.isDownloading) {
         _showDownloadProgressDialog(0.01); // Trigger dialog with initial small progress
       }
     });
-    _checkAuthentication();
     _addWelcomeMessage();
   }
 
@@ -205,12 +206,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     ];
   }
 
-  Future<void> _checkAuthentication() async {
-    final authProvider = context.read<AuthProvider>();
-    if (authProvider.currentUser == null) {
-      if (mounted) {
-        context.go('/login');
-      }
+  /// Aligns with [GoRouter] redirect: only [isAuthenticated] gates access. If we are
+  /// authenticated but the user row is missing, reload once; if still missing, log out.
+  Future<void> _syncAuthUserWithRouter() async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isAuthenticated) return;
+    if (auth.currentUser != null) return;
+    final loaded = await auth.ensureCurrentUserLoaded();
+    if (!mounted) return;
+    if (!loaded) {
+      await auth.logout();
+      if (mounted) context.go('/login');
     }
   }
 

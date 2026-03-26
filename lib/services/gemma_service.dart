@@ -29,8 +29,8 @@ class GemmaService {
 
   Stream<String> generateStreamingResponse(String query, Map<String, dynamic>? fhirData) async* {
     final gemma = GemmaModelService.instance;
-    final List<Map<String, dynamic>> summary = (fhirData != null && fhirData.isNotEmpty) 
-        ? _getSummaryList(fhirData) 
+    final List<Map<String, dynamic>> summary = (fhirData != null && fhirData.isNotEmpty)
+        ? _getSummaryList(fhirData, query)
         : <Map<String, dynamic>>[];
     
     // Record user query in history BEFORE generating response
@@ -145,12 +145,20 @@ Instructions:
 
   String _buildResponsePrompt(String query, List<Map<String, dynamic>> summary, [List<String>? contextChunks]) {
     final recordsText = summary.map((s) => jsonEncode(s)).join('\n');
-    
+    final q = query.toLowerCase();
+    final glucoseHint = (q.contains('glucose') ||
+            q.contains('blood sugar') ||
+            q.contains('cgm') ||
+            q.contains('a1c') ||
+            q.contains('hba1c'))
+        ? '\n7. The user asked about glucose or CGM: summarize blood glucose and HbA1c-related lines only; ignore step counts or unrelated vitals unless none exist.'
+        : '';
+
     return '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
 The user asked: "$query"
 
-Here are the specific EHR records retrieved for this request:
+Here are the specific EHR records retrieved for this request (may include Apple Health–synced Observations tagged in source data):
 $recordsText
 
 Instructions:
@@ -159,7 +167,7 @@ Instructions:
 3. If the records are Observations, focus on lab values and vitals.
 4. Mention specific names, values, and dates found in the data.
 5. Use a professional and supportive medical tone.
-6. Be concise and do not mention being an AI.
+6. Be concise and do not mention being an AI.$glucoseHint
 <end_of_turn>
 <start_of_turn>model
 ''';
@@ -241,12 +249,66 @@ Instructions:
     return [];
   }
 
-  List<Map<String, dynamic>> _getSummaryList(Map<String, dynamic> fhirData) {
+  /// Re-order observations so the user's topic (e.g. glucose) is not buried under frequent step-count rows.
+  List<dynamic> _prioritizeEntriesForUserQuestion(String userQuery, List<dynamic> entries) {
+    final q = userQuery.toLowerCase();
+    final wantGlucose = q.contains('glucose') ||
+        q.contains('blood sugar') ||
+        q.contains('blood glucose') ||
+        RegExp(r'\b(cgm|dexcom|libre|a1c|hba1c)\b').hasMatch(q);
+    final wantSteps =
+        RegExp(r'\b(steps?|walking|walked|step\s*count)\b', caseSensitive: false).hasMatch(q);
+    if (!wantGlucose && !wantSteps) return entries;
+
+    final preferred = <dynamic>[];
+    final rest = <dynamic>[];
+    for (final entry in entries) {
+      final res = entry is Map && entry.containsKey('resource') ? entry['resource'] : entry;
+      if (res is! Map || res['resourceType'] != 'Observation') {
+        rest.add(entry);
+        continue;
+      }
+      final code = res['code'];
+      String text = '';
+      String? loinc;
+      if (code is Map) {
+        text = (code['text'] as String?)?.toLowerCase() ?? '';
+        final coding = code['coding'];
+        if (coding is List && coding.isNotEmpty && coding.first is Map) {
+          loinc = (coding.first as Map)['code'] as String?;
+        }
+      }
+      bool isGlucose = text.contains('glucose') ||
+          text.contains('blood sugar') ||
+          text.contains('a1c') ||
+          text.contains('hba1c') ||
+          loinc == '2339-0' ||
+          loinc == '4548-4';
+      bool isSteps =
+          text.contains('step') || loinc == '55423-8' || loinc == '41950-7';
+
+      if (wantGlucose && isGlucose) {
+        preferred.add(entry);
+      } else if (wantSteps && isSteps) {
+        preferred.add(entry);
+      } else {
+        rest.add(entry);
+      }
+    }
+    if (wantGlucose && preferred.isNotEmpty) return [...preferred, ...rest];
+    if (wantSteps && preferred.isNotEmpty) return [...preferred, ...rest];
+    return entries;
+  }
+
+  List<Map<String, dynamic>> _getSummaryList(Map<String, dynamic> fhirData, [String userQuery = '']) {
     try {
       final List<Map<String, dynamic>> summary = [];
-      final List<dynamic> entries = _findEntries(fhirData);
+      var entries = _findEntries(fhirData);
+      if (userQuery.isNotEmpty) {
+        entries = _prioritizeEntriesForUserQuestion(userQuery, entries);
+      }
 
-      for (var entry in entries.take(10)) {
+      for (var entry in entries.take(24)) {
         final res = entry is Map && entry.containsKey('resource') ? entry['resource'] : entry;
         if (res is! Map) continue;
 

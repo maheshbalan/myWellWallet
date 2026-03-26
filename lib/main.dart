@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io';
+import 'package:background_downloader/background_downloader.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:google_fonts/google_fonts.dart' hide Config;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'services/mcp_client.dart';
@@ -39,6 +40,10 @@ void main() {
     // Initialize Logging
     await LogService.init();
     LogService.log('Application starting...');
+
+    if (Platform.isIOS || Platform.isAndroid) {
+      await _initBackgroundFileDownloader();
+    }
 
     // Initialize sqflite for desktop (Linux, Windows, macOS)
     if (Platform.isLinux || Platform.isWindows) {
@@ -79,6 +84,32 @@ void main() {
     debugPrint('Uncaught zone error: $error');
     debugPrint('$stackTrace');
   });
+}
+
+Future<void> _initBackgroundFileDownloader() async {
+  try {
+    await FileDownloader().ready;
+    await FileDownloader().configure(
+      globalConfig: [
+        (Config.requestTimeout, const Duration(minutes: 45)),
+      ],
+      androidConfig: [
+        (Config.useCacheDir, Config.never),
+      ],
+    );
+    FileDownloader().updates.listen((update) {
+      if (update is TaskProgressUpdate) {
+        LogService.log(
+          'BGDownloader: ${update.task.taskId} ${(update.progress * 100).toStringAsFixed(1)}%',
+        );
+      }
+    });
+    await FileDownloader().start();
+    LogService.log('FileDownloader: ready (background downloads enabled).');
+  } catch (e, st) {
+    LogService.log('FileDownloader init failed: $e');
+    debugPrint('$st');
+  }
 }
 
 class MyWellWalletApp extends StatefulWidget {
@@ -299,18 +330,19 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
         ChangeNotifierProvider.value(
           value: _patientProvider,
         ),
-        ChangeNotifierProxyProvider<PatientProvider, QueryProvider>(
+        ChangeNotifierProxyProvider2<PatientProvider, AuthProvider, QueryProvider>(
           create: (_) {
             final queryProvider = QueryProvider(mcpClient: _mcpClient);
             queryProvider.setLocalQueryService(_localQueryService);
             queryProvider.setGemmaRAGService(_gemmaRAGService);
             return queryProvider;
           },
-          update: (_, patientProvider, previous) {
+          update: (_, patientProvider, authProvider, previous) {
             previous ??= QueryProvider(mcpClient: _mcpClient);
             previous.setLocalQueryService(_localQueryService);
             previous.setGemmaRAGService(_gemmaRAGService);
             previous.setPatientProvider(patientProvider);
+            previous.setAuthProvider(authProvider);
             return previous;
           },
         ),

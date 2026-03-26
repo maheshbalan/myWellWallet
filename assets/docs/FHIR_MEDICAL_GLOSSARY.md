@@ -74,6 +74,25 @@ When users ask questions in natural language (e.g., "Show me my recent visits"),
 - **Description**: A chronological view of all medical events, typically combining multiple resource types sorted by date.
 - **Query Pattern**: Multiple queries to get Encounters, Observations, Conditions, Procedures, sorted by date
 
+## Integrated data: Apple Health + EHR (MCH FHIR)
+
+MyWellWallet stores **clinic/EHR data** as native FHIR in `fhir_resources` (keyed by FHIR **`patient_id`**) and **Apple Health** in `health_*` tables (keyed by app **`user_id`**). For MedGemma and RAG, the **target query shape stays FHIR** (usually `Observation`, `DiagnosticReport`, `Encounter`, …); the app **merges** both sources into **FHIR-like maps** with provenance tags (`ehr-fhir` vs `apple-health`). See **`INTEGRATED_HEALTH_EHR_DESIGN.md`** and **`SQLITE_SCHEMA.md`** (Integrated clinical data model).
+
+### Human terms that may imply Apple Health, EHR, or both
+
+| Human terms | Typical unified resource | Notes |
+|-------------|-------------------------|--------|
+| steps, walking, activity rings, daily steps | `Observation` (LOINC for step count / activity) | From `health_steps`; may not exist in EHR |
+| watch heart rate, resting heart rate, HR from watch | `Observation` (heart rate) | Apple: `health_heart_rate`; EHR may use vitals Observations |
+| blood sugar, CGM, glucose from phone | `Observation` | Apple: `health_glucose`; EHR: lab `Observation` |
+| clinic vitals, office blood pressure, doctor’s office | `Observation` | Usually EHR FHIR only |
+| lab results, pathology, clinic labs | `Observation` or `DiagnosticReport` | Usually EHR; Apple `health_lab_results` may mirror some LOINC codes |
+| everything, full picture, combine my data | Multiple / merged `Observation` + other types | Plan should set **`dataSources`** to include both when implemented |
+
+### Query plan hint for the model
+
+When the user asks for **watch**, **iPhone**, **Apple Health**, **Health app**, or **steps**, assume **`dataSources`** includes **`apple-health`** in addition to **`ehr-fhir`** for measurable types. When they ask for **clinic**, **doctor**, **hospital**, **MCH**, **chart**, prefer **`ehr-fhir`**.
+
 ## Temporal Qualifiers
 
 ### Recent / Latest / Most Recent
@@ -180,4 +199,6 @@ When users ask questions in natural language (e.g., "Show me my recent visits"),
 - FHIR Resource Definitions: https://www.hl7.org/fhir/resourcelist.html
 - US Core Implementation Guide: https://www.hl7.org/fhir/us/core/
 - FHIR Search Parameters: https://www.hl7.org/fhir/search.html
+
+
 

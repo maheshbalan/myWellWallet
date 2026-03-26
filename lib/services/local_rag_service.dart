@@ -15,6 +15,7 @@ class LocalRAGService {
   // Cached document content
   String? _fhirGlossary;
   String? _sqliteSchema;
+  String? _integratedHealthEhrDesign;
   String? _mcpClientGuide;
   String? _mcpServerReadme;
   
@@ -33,6 +34,8 @@ class LocalRAGService {
       
       _fhirGlossary = await _loadDocument('FHIR_MEDICAL_GLOSSARY.md');
       _sqliteSchema = await _loadDocument('SQLITE_SCHEMA.md');
+      _integratedHealthEhrDesign =
+          await _loadDocument('INTEGRATED_HEALTH_EHR_DESIGN.md');
       _mcpClientGuide = await _loadDocument('README_MOBILE_CLIENT.md');
       _mcpServerReadme = await _loadDocument('FHIR_MCP_SERVER_README.md');
       
@@ -98,6 +101,37 @@ class LocalRAGService {
         contextChunks.add('=== SQLite Database Schema ===');
         contextChunks.addAll(schemaChunks);
       }
+    }
+
+    // 2b. Integrated Apple Health + EHR design (architecture + query contract)
+    if (_integratedHealthEhrDesign != null &&
+        _shouldIncludeIntegratedDesign(lowerQuery)) {
+      final designChunks =
+          _findRelevantChunks(_integratedHealthEhrDesign!, keywords);
+      if (designChunks.isNotEmpty) {
+        contextChunks.add('=== Integrated Apple Health + EHR FHIR Design ===');
+        contextChunks.addAll(designChunks);
+      } else {
+        contextChunks.add('=== Integrated Apple Health + EHR FHIR Design ===');
+        contextChunks.add(
+          'EHR data: fhir_resources keyed by patient_id (native FHIR JSON). '
+          'Apple Health: health_glucose, health_heart_rate, health_steps, health_blood_pressure, health_lab_results keyed by user_id. '
+          'Unified answers merge both into FHIR-like Observations with meta.tag provenance (ehr-fhir vs apple-health). '
+          'Optional queryPlan.dataSources: ["ehr-fhir","apple-health"]. Details in INTEGRATED_HEALTH_EHR_DESIGN.md.',
+        );
+      }
+    }
+
+    if (RegExp(r'\b(glucose|glycemic|blood sugar|blood glucose|cgm|dexcom|libre|a1c|hba1c)\b',
+            caseSensitive: false)
+        .hasMatch(lowerQuery)) {
+      contextChunks.add('=== Apple Health glucose + query contract ===');
+      contextChunks.add(
+        'Apple Health glucose syncs to health_glucose and appears as Observation LOINC 2339-0 (and labs HbA1c 4548-4) '
+        'with code.text "Blood glucose (Apple Health)" and meta.tag apple-health. '
+        'To answer glucose questions, the query plan must use filters.codeSearch "glucose" and '
+        'dataSources ["ehr-fhir","apple-health"] so high-volume step Observations (55423-8) are not mixed in.',
+      );
     }
     
     // 3. Check MCP Client Guide for server query syntax
@@ -208,6 +242,38 @@ class LocalRAGService {
       'timeline', 'history', 'record', 'data', 'information',
     ];
     return localIndicators.any((indicator) => query.contains(indicator));
+  }
+
+  /// Apple Health + merged EHR queries — load integrated design doc for RAG
+  bool _shouldIncludeIntegratedDesign(String query) {
+    final indicators = [
+      'apple',
+      'healthkit',
+      'health kit',
+      'watch',
+      'iphone',
+      'steps',
+      'walking',
+      'cgm',
+      'integrated',
+      'combine',
+      'both',
+      'ehr',
+      'fhir',
+      'mch',
+      'clinic',
+      'chart',
+      'glucose',
+      'blood sugar',
+      'heart rate',
+      'blood pressure',
+      'vital',
+      'lab',
+      'observation',
+      'synced',
+      'device',
+    ];
+    return indicators.any((w) => query.contains(w));
   }
 
   /// Determine if query might need MCP Gateway

@@ -43,6 +43,23 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// Loads [currentUser] from the DB when missing (e.g. race after biometric/PIN).
+  /// Does not change [isAuthenticated]. Returns whether a user row is now available.
+  Future<bool> ensureCurrentUserLoaded() async {
+    if (_currentUser != null) return true;
+    try {
+      final users = await _database.getAllUsers();
+      if (users.isNotEmpty) {
+        _currentUser = users.first;
+        notifyListeners();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('ensureCurrentUserLoaded: $e');
+    }
+    return false;
+  }
+
   /// Check if user exists in database
   Future<bool> userExists() async {
     try {
