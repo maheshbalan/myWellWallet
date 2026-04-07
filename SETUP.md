@@ -46,6 +46,11 @@ flutter run -d android
 flutter run -d chrome
 ```
 
+### Desktop (for testing)
+```bash
+flutter run -d linux
+```
+
 ## Configuration
 
 The app is configured to connect to:

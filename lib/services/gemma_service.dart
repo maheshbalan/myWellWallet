@@ -102,10 +102,37 @@ class GemmaService {
     }
   }
 
+  String _formatHistory() {
+    if (_conversationHistory.isEmpty) return '';
+    final buffer = StringBuffer();
+    // Use up to last 4 turns for context to keep prompt size manageable
+    final recentHistory = _conversationHistory.length > 8 
+        ? _conversationHistory.sublist(_conversationHistory.length - 8)
+        : _conversationHistory;
+    
+    // We don't include the very last entry if it's the current query (added in generateStreamingResponse)
+    // because it will be explicitly listed as "The user asked: ..."
+    final historyToInclude = recentHistory.isNotEmpty && recentHistory.last['role'] == 'user'
+        ? recentHistory.sublist(0, recentHistory.length - 1)
+        : recentHistory;
+
+    if (historyToInclude.isEmpty) return '';
+
+    buffer.writeln('\nPrevious conversation context:');
+    for (var msg in historyToInclude) {
+      final role = msg['role'] == 'user' ? 'User' : 'Assistant';
+      buffer.writeln('$role: ${msg['content']}');
+    }
+    buffer.writeln();
+    return buffer.toString();
+  }
+
   String _buildNoDataResponsePrompt(String query, [List<String>? contextChunks]) {
+    final history = _formatHistory();
     return '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
-The user asked: "$query"
+$history
+The user just asked: "$query"
 
 However, no health records were found in the local database or Medplum server for this specific request.
 
@@ -120,13 +147,15 @@ Instructions:
   }
 
   String _buildRawDataResponsePrompt(String query, Map<String, dynamic> rawData, [List<String>? contextChunks]) {
+    final history = _formatHistory();
     // Truncate raw data if too large for prompt
     final rawJson = jsonEncode(rawData);
     final dataSubset = rawJson.length > 4000 ? rawJson.substring(0, 4000) : rawJson;
 
     return '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
-The user asked: "$query"
+$history
+The user just asked: "$query"
 
 Here is the RAW FHIR EHR data from the server. It may contain technical metadata (like "method", "path", "jsonrpc") which you should IGNORE. Focus ONLY on the clinical records found in the "response" or "entry" fields.
 
@@ -143,31 +172,58 @@ Instructions:
 ''';
   }
 
+  static bool _isListIntent(String query) {
+    final q = query.toLowerCase();
+    return q.contains('list') ||
+        q.contains('show') ||
+        q.contains('all') ||
+        q.contains('full') ||
+        q.contains('display') ||
+        q.startsWith('get') ||
+        q.contains('record') ||
+        q.contains('records');
+  }
+
   String _buildResponsePrompt(String query, List<Map<String, dynamic>> summary, [List<String>? contextChunks]) {
+    final history = _formatHistory();
     final recordsText = summary.map((s) => jsonEncode(s)).join('\n');
     final q = query.toLowerCase();
+    final isList = _isListIntent(query);
+
     final glucoseHint = (q.contains('glucose') ||
             q.contains('blood sugar') ||
             q.contains('cgm') ||
             q.contains('a1c') ||
             q.contains('hba1c'))
-        ? '\n7. The user asked about glucose or CGM: summarize blood glucose and HbA1c-related lines only; ignore step counts or unrelated vitals unless none exist.'
+        ? '\n- The user asked about glucose or CGM: list blood glucose and HbA1c-related entries only; ignore step counts or unrelated vitals unless none exist.'
         : '';
+
+    final instructions = isList ? '''Instructions:
+1. Format EACH record as its own separate bullet point. Do not collapse multiple records into one sentence.
+   - Pattern: "- **[Name/Vaccine/Test]** — [Date] — [Value or Status]"
+   - Example: "- **Influenza vaccine** — 2016-08-17 — Completed (preservative-free)"
+2. List every record individually; do not group or summarize across records.
+3. If there is only one record, still use the bullet format and note it is the only one on file.
+4. Use a professional and supportive medical tone.
+5. Do not mention being an AI.$glucoseHint''' : '''Instructions:
+1. Summarize ONLY the records provided above.
+2. If the records are Immunizations, focus on vaccines and dates.
+3. If the records are Observations, focus on lab values and vitals.
+4. If the records are DiagnosticReports, focus on report names and conclusions.
+5. If the records are Conditions, focus on the diagnosis and status.
+6. Mention specific names, values, and dates found in the data.
+7. Use a professional and supportive medical tone.
+8. Be concise and do not mention being an AI.$glucoseHint''';
 
     return '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
-The user asked: "$query"
+$history
+The user just asked: "$query"
 
 Here are the specific EHR records retrieved for this request (may include Apple Health–synced Observations tagged in source data):
 $recordsText
 
-Instructions:
-1. Summarize ONLY the records provided above.
-2. If the records are Immunizations, focus on vaccines and dates. 
-3. If the records are Observations, focus on lab values and vitals.
-4. Mention specific names, values, and dates found in the data.
-5. Use a professional and supportive medical tone.
-6. Be concise and do not mention being an AI.$glucoseHint
+$instructions
 <end_of_turn>
 <start_of_turn>model
 ''';
@@ -337,6 +393,13 @@ Instructions:
         } else if (type == 'Immunization') {
           item['Vaccine'] = res['vaccineCode']?['text'] ?? res['vaccineCode']?['coding']?[0]?['display'] ?? 'Vaccination';
           item['Status'] = res['status'] ?? 'Completed';
+        } else if (type == 'DiagnosticReport') {
+          item['Report'] = res['code']?['text'] ?? res['code']?['coding']?[0]?['display'] ?? 'Diagnostic Report';
+          item['Conclusion'] = res['conclusion'] ?? 'Report available';
+          item['Status'] = res['status'];
+        } else if (type == 'Condition') {
+          item['Condition'] = res['code']?['text'] ?? res['code']?['coding']?[0]?['display'] ?? 'Diagnosis';
+          item['Status'] = res['clinicalStatus']?['coding']?[0]?['code'] ?? res['clinicalStatus']?['text'] ?? 'Active';
         } else {
           item['Details'] = res['id'] ?? 'N/A';
         }

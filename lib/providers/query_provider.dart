@@ -259,10 +259,16 @@ class QueryProvider with ChangeNotifier {
     }
   }
 
+  void addAssistantResponseToHistory(String response) {
+    _gemmaRAGService?.addToHistory('model', response);
+  }
+
   void clearResults() {
     _lastQuery = null;
     _lastResult = null;
     _error = null;
+    _gemmaRAGService?.clearHistory();
+    gemmaService.clearContext();
     notifyListeners();
   }
 }

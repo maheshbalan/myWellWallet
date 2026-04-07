@@ -22,6 +22,10 @@ class GemmaRAGService {
   
   // Conversation history for context
   final List<Map<String, String>> _conversationHistory = [];
+
+  // Track the last successfully resolved resource type so follow-up questions
+  // can reuse it instead of triggering a generic clarification.
+  String? _lastSuccessfulResourceType;
   
   GemmaRAGService({
     required LocalQueryService queryService,
@@ -52,7 +56,7 @@ class GemmaRAGService {
     }
 
     // Add user query to conversation history
-    _addToHistory('user', query);
+    addToHistory('user', query);
 
     // Retrieve relevant context from RAG
     final contextChunks = await _ragService.retrieveContext(query);
@@ -121,6 +125,9 @@ class GemmaRAGService {
         'message': 'Could not understand the query. Please try rephrasing.',
       };
     }
+
+    // Track resource type for follow-up context resolution
+    _lastSuccessfulResourceType = queryPlan['resourceType'] as String?;
 
     return {
       'type': 'queryPlan',
@@ -211,27 +218,53 @@ class GemmaRAGService {
       };
     }
   }
+String _formatHistory() {
+  if (_conversationHistory.isEmpty) return '';
+  final buffer = StringBuffer();
+  // Use up to last 4 turns for context
+  final recentHistory = _conversationHistory.length > 8 
+      ? _conversationHistory.sublist(_conversationHistory.length - 8)
+      : _conversationHistory;
 
-  /// Build prompt for query generation
-  String _buildQueryGenerationPrompt(
-    String query,
-    String? patientId,
-    List<String> contextChunks,
-  ) {
-    final docContext = contextChunks.isEmpty
-        ? ''
-        : () {
-            final j = contextChunks.take(8).join('\n---\n');
-            final t = j.length > 8000 ? '${j.substring(0, 8000)}…' : j;
-            return '\n\nRelevant documentation:\n$t\n';
-          }();
+  // We don't include the very last entry if it's the current query
+  final historyToInclude = recentHistory.isNotEmpty && recentHistory.last['role'] == 'user'
+      ? recentHistory.sublist(0, recentHistory.length - 1)
+      : recentHistory;
 
-    return '''<start_of_turn>user
+  if (historyToInclude.isEmpty) return '';
+
+  buffer.writeln('\nPrevious conversation context:');
+  for (var msg in historyToInclude) {
+    final role = msg['role'] == 'user' ? 'User' : 'Assistant';
+    buffer.writeln('$role: ${msg['content']}');
+  }
+  buffer.writeln();
+  return buffer.toString();
+}
+
+/// Build prompt for query generation
+String _buildQueryGenerationPrompt(
+  String query,
+  String? patientId,
+  List<String> contextChunks,
+) {
+  final history = _formatHistory();
+  final docContext = contextChunks.isEmpty
+      ? ''
+      : () {
+          final j = contextChunks.take(8).join('\n---\n');
+          final t = j.length > 8000 ? '${j.substring(0, 8000)}…' : j;
+          return '\n\nRelevant documentation:\n$t\n';
+        }();
+
+  return '''<start_of_turn>user
 You are a FHIR clinical agent. Convert this query into a FHIR JSON query plan.
+$history
 Patient ID: $patientId
 User question: "$query"
 $docContext
 Guidelines:
+...
 - Use subject=Patient/$patientId for: Observation, Encounter, DiagnosticReport.
 - Use patient=Patient/$patientId for: Immunization, MedicationStatement, Condition, AllergyIntolerance.
 - Use request_generic_resource for resources not listed.
@@ -267,6 +300,36 @@ Respond ONLY with valid JSON.
     final result = _interpretWithRules(lowerQuery, contextChunks);
     if (result != null) {
       return result;
+    }
+
+    // If there is prior conversation context and we know the last topic,
+    // treat this as a follow-up and reuse the previous resource type rather
+    // than showing a generic clarification prompt.
+    if (_conversationHistory.length > 1 && _lastSuccessfulResourceType != null) {
+      LogService.log(
+        'GemmaRAGService: No rule match — treating as follow-up, reusing $_lastSuccessfulResourceType',
+      );
+      final isObservation = _lastSuccessfulResourceType == 'Observation';
+      // Use a higher count when the user explicitly wants a full/complete list.
+      final wantsAll = lowerQuery.contains('full') ||
+          lowerQuery.contains('all') ||
+          lowerQuery.contains('complete') ||
+          lowerQuery.contains('more') ||
+          lowerQuery.contains('every');
+      final count = wantsAll
+          ? (isObservation ? 50 : 50)
+          : (isObservation ? 20 : 10);
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': _lastSuccessfulResourceType,
+          'filters': {
+            '_count': count,
+            '_sort': '-date',
+          },
+          if (isObservation) 'dataSources': ['ehr-fhir', 'apple-health'],
+        },
+      };
     }
 
     // Default fallback if everything else fails
@@ -602,7 +665,7 @@ Respond ONLY with valid JSON.
   }
 
   /// Add message to conversation history
-  void _addToHistory(String role, String content) {
+  void addToHistory(String role, String content) {
     _conversationHistory.add({'role': role, 'content': content});
     // Keep only last 10 messages
     if (_conversationHistory.length > 10) {
@@ -613,6 +676,7 @@ Respond ONLY with valid JSON.
   /// Clear conversation history
   void clearHistory() {
     _conversationHistory.clear();
+    _lastSuccessfulResourceType = null;
   }
 
   /// Get conversation history

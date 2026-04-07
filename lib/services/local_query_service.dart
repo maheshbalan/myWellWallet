@@ -627,31 +627,36 @@ class LocalQueryService {
   void _formatObservation(StringBuffer buffer, Map<String, dynamic> resource) {
     final status = resource['status'] as String? ?? 'Unknown';
     final code = resource['code'] as Map<String, dynamic>?;
-    final value = resource['valueQuantity'] ?? resource['valueString'] ?? resource['value'];
+    final valueQuantity = resource['valueQuantity'] as Map<String, dynamic>?;
+    final valueString = resource['valueString'] as String?;
+    final value = resource['value'];
     final effectiveDateTime = resource['effectiveDateTime'] as String?;
     
     buffer.writeln('**Status**: $status');
     
     if (code != null) {
+      final text = code['text'] as String?;
       final coding = code['coding'] as List?;
-      if (coding != null && coding.isNotEmpty) {
+      String? display = text;
+      
+      if (display == null && coding != null && coding.isNotEmpty) {
         final firstCoding = coding[0] as Map<String, dynamic>?;
-        final display = firstCoding?['display'] as String?;
-        if (display != null) {
-          buffer.writeln('**Test**: $display');
-        }
+        display = firstCoding?['display'] as String?;
+      }
+      
+      if (display != null) {
+        buffer.writeln('**Test**: $display');
       }
     }
     
-    if (value != null) {
-      if (value is Map) {
-        final valueQuantity = value as Map<String, dynamic>;
-        final valueNum = valueQuantity['value'];
-        final unit = valueQuantity['unit'] as String?;
-        buffer.writeln('**Value**: $valueNum ${unit ?? ''}');
-      } else {
-        buffer.writeln('**Value**: $value');
-      }
+    if (valueQuantity != null) {
+      final valueNum = valueQuantity['value'];
+      final unit = valueQuantity['unit'] as String?;
+      buffer.writeln('**Value**: $valueNum ${unit ?? ''}');
+    } else if (valueString != null) {
+      buffer.writeln('**Value**: $valueString');
+    } else if (value != null) {
+      buffer.writeln('**Value**: $value');
     }
     
     if (effectiveDateTime != null) {
@@ -667,13 +672,17 @@ class LocalQueryService {
     buffer.writeln('**Status**: $status');
     
     if (medicationCodeableConcept != null) {
+      final text = medicationCodeableConcept['text'] as String?;
       final coding = medicationCodeableConcept['coding'] as List?;
-      if (coding != null && coding.isNotEmpty) {
+      String? display = text;
+      
+      if (display == null && coding != null && coding.isNotEmpty) {
         final firstCoding = coding[0] as Map<String, dynamic>?;
-        final display = firstCoding?['display'] as String?;
-        if (display != null) {
-          buffer.writeln('**Medication**: $display');
-        }
+        display = firstCoding?['display'] as String?;
+      }
+      
+      if (display != null) {
+        buffer.writeln('**Medication**: $display');
       }
     } else if (medicationReference != null) {
       final display = medicationReference['display'] as String?;
@@ -697,24 +706,32 @@ class LocalQueryService {
     final onsetDateTime = resource['onsetDateTime'] as String?;
     
     if (clinicalStatus != null) {
+      final text = clinicalStatus['text'] as String?;
       final coding = clinicalStatus['coding'] as List?;
-      if (coding != null && coding.isNotEmpty) {
+      String? status = text;
+      
+      if (status == null && coding != null && coding.isNotEmpty) {
         final firstCoding = coding[0] as Map<String, dynamic>?;
-        final code = firstCoding?['code'] as String?;
-        if (code != null) {
-          buffer.writeln('**Status**: $code');
-        }
+        status = firstCoding?['code'] as String? ?? firstCoding?['display'] as String?;
+      }
+      
+      if (status != null) {
+        buffer.writeln('**Status**: $status');
       }
     }
     
     if (code != null) {
+      final text = code['text'] as String?;
       final coding = code['coding'] as List?;
-      if (coding != null && coding.isNotEmpty) {
+      String? display = text;
+      
+      if (display == null && coding != null && coding.isNotEmpty) {
         final firstCoding = coding[0] as Map<String, dynamic>?;
-        final display = firstCoding?['display'] as String?;
-        if (display != null) {
-          buffer.writeln('**Condition**: $display');
-        }
+        display = firstCoding?['display'] as String?;
+      }
+      
+      if (display != null) {
+        buffer.writeln('**Condition**: $display');
       }
     }
     
@@ -732,13 +749,17 @@ class LocalQueryService {
     buffer.writeln('**Status**: $status');
     
     if (code != null) {
+      final text = code['text'] as String?;
       final coding = code['coding'] as List?;
-      if (coding != null && coding.isNotEmpty) {
+      String? display = text;
+      
+      if (display == null && coding != null && coding.isNotEmpty) {
         final firstCoding = coding[0] as Map<String, dynamic>?;
-        final display = firstCoding?['display'] as String?;
-        if (display != null) {
-          buffer.writeln('**Report Type**: $display');
-        }
+        display = firstCoding?['display'] as String?;
+      }
+      
+      if (display != null) {
+        buffer.writeln('**Report Type**: $display');
       }
     }
     
@@ -759,13 +780,17 @@ class LocalQueryService {
     buffer.writeln('**Status**: $status');
     
     if (vaccineCode != null) {
+      final text = vaccineCode['text'] as String?;
       final coding = vaccineCode['coding'] as List?;
-      if (coding != null && coding.isNotEmpty) {
+      String? display = text;
+      
+      if (display == null && coding != null && coding.isNotEmpty) {
         final firstCoding = coding[0] as Map<String, dynamic>?;
-        final display = firstCoding?['display'] as String?;
-        if (display != null) {
-          buffer.writeln('**Vaccine**: $display');
-        }
+        display = firstCoding?['display'] as String?;
+      }
+      
+      if (display != null) {
+        buffer.writeln('**Vaccine**: $display');
       }
     }
     

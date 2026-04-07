@@ -420,6 +420,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         if (result['markdown'] != null) {
           final response = result['markdown'] as String;
           _addAssistantMessage(response, isMarkdown: true);
+          // Sync conversation history so both services are aware of this exchange.
+          // GemmaRAGService already has the user query (added in processQuery),
+          // so we only need to add the assistant response there.
+          _gemmaService.addToHistory('user', query);
+          _gemmaService.addToHistory('model', response);
+          queryProvider.addAssistantResponseToHistory(response);
         } else if (result['result'] != null || result['resources'] != null) {
           // Generate response using Gemma service WITH STREAMING
           // Normalize the data format
@@ -450,6 +456,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // Auto-scroll as text comes in
             _scrollToBottom();
           }
+          
+          // Finalize assistant response in history for both services
+          if (mounted && fullResponse.isNotEmpty) {
+            queryProvider.addAssistantResponseToHistory(fullResponse.trim());
+          }
         } else {
           // If result is empty but no error, still let AI provide a friendly "no data found" message
           // instead of a hardcoded string.
@@ -473,6 +484,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               });
             }
             _scrollToBottom();
+          }
+          
+          // Finalize assistant response in history
+          if (mounted && fullResponse.isNotEmpty) {
+            queryProvider.addAssistantResponseToHistory(fullResponse.trim());
           }
         }
         // Generate follow-up prompts based on query
