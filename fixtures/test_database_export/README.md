@@ -10,6 +10,8 @@ It includes:
 
 The canonical schema description is kept in sync here as **`SQLITE_SCHEMA.md`** (copy of `docs/SQLITE_SCHEMA.md`).
 
+**Seed simulator/phone + Dify:** see **`docs/DATABASE_FIXTURE_TESTING_AND_DIFY.md`** (device seeding, Android, and Knowledge-base export via `scripts/export_sqlite_for_dify.py`).
+
 ## Privacy and sharing
 
 This file can contain **personally identifiable information (PII)** and **protected health information (PHI)**. Only commit or share it with **explicit consent** and a **private** repository (or encrypt / redact for public use). Your colleague should treat it like production clinical data.
