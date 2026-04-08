@@ -157,6 +157,42 @@ WHERE patient_id = ?
 AND json_extract(resource_data, '$.status') = 'active';
 ```
 
+### 4. `fetch_summaries`
+
+Stores a summary row each time patient FHIR data is fetched from the server (e.g. Medplum) and persisted.
+
+**Schema:**
+```sql
+CREATE TABLE fetch_summaries (
+  id TEXT PRIMARY KEY,
+  patient_id TEXT NOT NULL,
+  total_resources INTEGER NOT NULL,
+  resource_counts TEXT NOT NULL,
+  completed_at TEXT NOT NULL,
+  errors TEXT,
+  stored_in_database INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+)
+```
+
+**Columns:**
+- `id`: Unique id for this fetch run
+- `patient_id`: FHIR Patient id
+- `total_resources`: Total resources processed
+- `resource_counts`: JSON map of resource type → count
+- `completed_at`: ISO 8601 when fetch finished
+- `errors`: Optional error text
+- `stored_in_database`: Whether rows were written to `fhir_*` tables
+- `created_at`: ISO 8601
+
+**Indexes:**
+- `idx_fetch_summaries_patient_id` on `patient_id`
+
+**Query Examples:**
+```sql
+SELECT * FROM fetch_summaries WHERE patient_id = ? ORDER BY completed_at DESC LIMIT 5;
+```
+
 ## Common Query Patterns
 
 ### Get Patient Information
