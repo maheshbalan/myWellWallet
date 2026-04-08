@@ -26,7 +26,22 @@ This file can contain **personally identifiable information (PII)** and **protec
 | `fhir_resources` | 175 |
 | `health_glucose` | 15,491 |
 | `health_steps` | 3,050 |
-| Other `health_*` | 0 rows in this snapshot |
+| `health_heart_rate` | 15 **synthetic** (ids `synthetic_fixture_hr_*`) |
+| `health_blood_pressure` | 7 **synthetic** (`synthetic_fixture_bp_*`) |
+| `health_lab_results` | 12 **synthetic** (`synthetic_fixture_lab_*`) |
+
+Real Apple Health HR/BP/lab rows were empty in the original phone export; the fixture adds **fictional** values for UI/query testing. Sources are labeled *Synthetic Quest Demo Lab* / *Synthetic Demo Hospital*.
+
+### Re-apply synthetic HR / BP / labs
+
+After a fresh phone export, run:
+
+```bash
+cd fixtures/test_database_export
+sqlite3 mywellwallet_phone.sqlite3 < apply_synthetic_health_seed.sql
+```
+
+The script deletes any existing `synthetic_fixture_*` rows, then inserts the same panel again for the first user in `users`.
 
 Re-run the counts after each new export:
 
