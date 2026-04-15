@@ -23,7 +23,7 @@ Together, **local MedGemma + local SQLite (EHR + device metrics)** supports a re
 
 ### Apple Health (iOS / HealthKit)
 
-On supported devices, the app integrates **Apple Health** to ingest **RWE-class** streams—e.g. continuous glucose–style metrics, heart rate, steps, blood pressure, and structured lab-oriented rows where available. These are **persisted locally** (see `docs/SQLITE_SCHEMA.md` and `docs/INTEGRATED_HEALTH_EHR_DESIGN.md`) alongside server-backed FHIR, so analytics and LLM context can, in principle, **contrast clinic-recorded care with day-to-day physiology** (activity, home-range vitals, longitudinal device trends).
+On supported devices, the app integrates **Apple Health** to ingest **RWE-class** streams—e.g. continuous glucose–style metrics, heart rate, steps, blood pressure, and structured lab-oriented rows where available. These are **persisted locally** (see `docs/SQLITE_SCHEMA.md` and `docs/INTEGRATED_HEALTH_EHR_DESIGN.md`) alongside server-backed FHIR, so analytics and LLM context can **contrast clinic-recorded care with day-to-day physiology** (activity, home-range vitals, longitudinal device trends).
 
 ### MCP client and custom MCP FHIR server
 
@@ -119,8 +119,6 @@ The wallet is intended to participate in a **federated learning protocol (FLAI)*
 
 **Paper (PDF):** [FLAI — IEEE ICCE authored version (Dropbox)](https://www.dropbox.com/scl/fi/zdxdtv20jw1gq1kykepqt/FLAI_ICCE_authored_251029.pdf?rlkey=z1l0hzngfajch7sxje1il7tp3&e=2&st=dfs6zmg5&dl=0)
 
-*(If the link expires, replace with the official IEEE Xplore entry once available.)*
-
 ---
 
 ### 2. Decentralized federated LoRA fine-tuning for local LLMs
@@ -131,7 +129,7 @@ A complementary research thread targets **decentralized federated LoRA (Low-Rank
 - **Communication efficiency** — LoRA reduces the volume of updates compared to full-model federated learning, which matters on **mobile uplinks**.
 - **Alignment with local execution** — Adapters can be deployed alongside the GGUF workflow so the phone keeps **inference local** while still benefiting from **federated adaptation**.
 
-A paper describing this line of work has been **submitted to the BCCA conference in Barcelona (November 2026)**. There is **no public link** yet; citation and camera-ready details should be added after acceptance and publisher guidelines are known.
+A paper describing this line of work has been **submitted to the BCCA conference in Barcelona (November 2026)**.
 
 ---
 
