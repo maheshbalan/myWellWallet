@@ -115,7 +115,7 @@ flutter run
 
 The wallet is intended to participate in a **federated learning protocol (FLAI)** developed as part of ongoing research with **Eli Yune** (**Balkeum Labs**). The goal is to let many devices contribute **privacy-preserving gradient- or statistic-level updates** without centralizing raw PHI—aligning with the same privacy story as on-device inference.
 
-**Publication:** A joint paper on this direction was presented at the **IEEE Consumer Communications & Networking Conference (ICCE)**, **Dubai, February 2026**.
+**Publication:** A joint paper on this direction was presented at the **44th IEEE International Conference on Consumer Electronics (ICCE 2026)**, **Dubai, UAE, February 2026** (see [icce.org](https://icce.org/2026/) for the official program).
 
 **Paper (PDF):** [FLAI — IEEE ICCE authored version (Dropbox)](https://www.dropbox.com/scl/fi/zdxdtv20jw1gq1kykepqt/FLAI_ICCE_authored_251029.pdf?rlkey=z1l0hzngfajch7sxje1il7tp3&e=2&st=dfs6zmg5&dl=0)
 
