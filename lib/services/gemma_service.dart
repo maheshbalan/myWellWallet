@@ -9,6 +9,12 @@ class GemmaService {
   final List<Map<String, String>> _conversationHistory = [];
   final LocalRAGService _ragService = LocalRAGService();
   bool _ragInitialized = false;
+  final int? _promptBudgetOverride;
+
+  GemmaService({int? promptBudget}) : _promptBudgetOverride = promptBudget;
+
+  int get _promptBudget =>
+      _promptBudgetOverride ?? GemmaModelService.promptBudgetForPlatform();
 
   void setContext(String context) {}
 
@@ -102,24 +108,26 @@ class GemmaService {
     }
   }
 
-  String _formatHistory() {
-    if (_conversationHistory.isEmpty) return '';
+  /// Render conversation history as the "Previous conversation context" block
+  /// used inside the user-turn prompt. Always drops the trailing `user`
+  /// entry on the assumption that it's the current query (which the prompt
+  /// body states explicitly via "The user just asked: ..."). Static and
+  /// pure for testability.
+  @visibleForTesting
+  static String formatHistoryAsText(List<Map<String, String>> history) {
+    if (history.isEmpty) return '';
+    // Keep at most the last 8 entries (~4 turn pairs) so the context block
+    // doesn't dominate the prompt budget.
+    final recent = history.length > 8
+        ? history.sublist(history.length - 8)
+        : history;
+    final toInclude = recent.isNotEmpty && recent.last['role'] == 'user'
+        ? recent.sublist(0, recent.length - 1)
+        : recent;
+    if (toInclude.isEmpty) return '';
     final buffer = StringBuffer();
-    // Use up to last 4 turns for context to keep prompt size manageable
-    final recentHistory = _conversationHistory.length > 8 
-        ? _conversationHistory.sublist(_conversationHistory.length - 8)
-        : _conversationHistory;
-    
-    // We don't include the very last entry if it's the current query (added in generateStreamingResponse)
-    // because it will be explicitly listed as "The user asked: ..."
-    final historyToInclude = recentHistory.isNotEmpty && recentHistory.last['role'] == 'user'
-        ? recentHistory.sublist(0, recentHistory.length - 1)
-        : recentHistory;
-
-    if (historyToInclude.isEmpty) return '';
-
     buffer.writeln('\nPrevious conversation context:');
-    for (var msg in historyToInclude) {
+    for (final msg in toInclude) {
       final role = msg['role'] == 'user' ? 'User' : 'Assistant';
       buffer.writeln('$role: ${msg['content']}');
     }
@@ -127,11 +135,70 @@ class GemmaService {
     return buffer.toString();
   }
 
-  String _buildNoDataResponsePrompt(String query, [List<String>? contextChunks]) {
-    final history = _formatHistory();
-    return '''<start_of_turn>user
+  /// Iteratively build a prompt that fits within [budget]. Drops oldest
+  /// history turn pairs first, then trims tail records, and finally falls
+  /// back to [GemmaModelService.capPromptToBudget] which preserves the
+  /// `<start_of_turn>model` marker. Returns the resulting prompt string.
+  static String _fitToBudget({
+    required String Function(String historyText, String recordsText) render,
+    required List<Map<String, String>> history,
+    required List<String> recordLines,
+    required int budget,
+  }) {
+    var hist = List<Map<String, String>>.from(history);
+    final rec = List<String>.from(recordLines);
+
+    String build() => render(formatHistoryAsText(hist), rec.join('\n'));
+    var prompt = build();
+    if (prompt.length <= budget) return prompt;
+
+    // Phase 1: drop oldest history pairs (2 at a time) until fits or empty.
+    final startHist = hist.length;
+    while (prompt.length > budget && hist.length >= 2) {
+      hist.removeRange(0, 2);
+      prompt = build();
+    }
+    if (prompt.length <= budget) {
+      LogService.log(
+        'GemmaService._fitToBudget: trimmed history from $startHist to '
+        '${hist.length} entries (budget $budget)',
+      );
+      return prompt;
+    }
+
+    // Phase 2: drop tail record lines until fits or empty.
+    final startRec = rec.length;
+    while (prompt.length > budget && rec.isNotEmpty) {
+      rec.removeLast();
+      prompt = build();
+    }
+    if (prompt.length <= budget) {
+      LogService.log(
+        'GemmaService._fitToBudget: trimmed records from $startRec to '
+        '${rec.length} entries (budget $budget)',
+      );
+      return prompt;
+    }
+
+    // Safety net: hard-clip while preserving the model-turn marker.
+    LogService.log(
+      'GemmaService._fitToBudget: fixed overhead exceeds budget $budget; '
+      'applying capPromptToBudget',
+    );
+    return GemmaModelService.capPromptToBudget(prompt, budget);
+  }
+
+  /// Pure builder for the "no data found" prompt. Falls back to
+  /// budget-aware trimming via [_fitToBudget].
+  @visibleForTesting
+  static String buildNoDataResponsePrompt(
+    String query, {
+    List<Map<String, String>> history = const [],
+    required int budget,
+  }) {
+    String render(String historyText, String _) => '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
-$history
+$historyText
 The user just asked: "$query"
 
 However, no health records were found in the local database or Medplum server for this specific request.
@@ -144,23 +211,44 @@ Instructions:
 <end_of_turn>
 <start_of_turn>model
 ''';
+    return _fitToBudget(
+      render: render,
+      history: history,
+      recordLines: const [],
+      budget: budget,
+    );
   }
 
-  String _buildRawDataResponsePrompt(String query, Map<String, dynamic> rawData, [List<String>? contextChunks]) {
-    final history = _formatHistory();
-    // Truncate raw data if too large for prompt
-    final rawJson = jsonEncode(rawData);
-    final dataSubset = rawJson.length > 4000 ? rawJson.substring(0, 4000) : rawJson;
+  String _buildNoDataResponsePrompt(String query, [List<String>? contextChunks]) =>
+      buildNoDataResponsePrompt(
+        query,
+        history: _conversationHistory,
+        budget: _promptBudget,
+      );
 
-    return '''<start_of_turn>user
+  /// Pure builder for the raw-data prompt. Passes a single record line
+  /// containing the JSON-encoded raw data; budget overflow drops the entire
+  /// block (leaving the model to explain there was too much to show),
+  /// rather than mid-JSON clipping.
+  @visibleForTesting
+  static String buildRawDataResponsePrompt(
+    String query,
+    Map<String, dynamic> rawData, {
+    List<Map<String, String>> history = const [],
+    required int budget,
+  }) {
+    final rawJson = jsonEncode(rawData);
+
+    String render(String historyText, String recordsText) =>
+        '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
-$history
+$historyText
 The user just asked: "$query"
 
 Here is the RAW FHIR EHR data from the server. It may contain technical metadata (like "method", "path", "jsonrpc") which you should IGNORE. Focus ONLY on the clinical records found in the "response" or "entry" fields.
 
 Data:
-$dataSubset
+$recordsText
 
 Instructions:
 1. Summarize the actual clinical information (vaccines, visits, test results) clearly for the patient.
@@ -170,7 +258,26 @@ Instructions:
 <end_of_turn>
 <start_of_turn>model
 ''';
+
+    return _fitToBudget(
+      render: render,
+      history: history,
+      recordLines: [rawJson],
+      budget: budget,
+    );
   }
+
+  String _buildRawDataResponsePrompt(
+    String query,
+    Map<String, dynamic> rawData, [
+    List<String>? contextChunks,
+  ]) =>
+      buildRawDataResponsePrompt(
+        query,
+        rawData,
+        history: _conversationHistory,
+        budget: _promptBudget,
+      );
 
   static bool _isListIntent(String query) {
     final q = query.toLowerCase();
@@ -184,9 +291,14 @@ Instructions:
         q.contains('records');
   }
 
-  String _buildResponsePrompt(String query, List<Map<String, dynamic>> summary, [List<String>? contextChunks]) {
-    final history = _formatHistory();
-    final recordsText = summary.map((s) => jsonEncode(s)).join('\n');
+  /// Pure builder for the summarized-records prompt.
+  @visibleForTesting
+  static String buildResponsePrompt(
+    String query,
+    List<Map<String, dynamic>> summary, {
+    List<Map<String, String>> history = const [],
+    required int budget,
+  }) {
     final q = query.toLowerCase();
     final isList = _isListIntent(query);
 
@@ -198,14 +310,16 @@ Instructions:
         ? '\n- The user asked about glucose or CGM: list blood glucose and HbA1c-related entries only; ignore step counts or unrelated vitals unless none exist.'
         : '';
 
-    final instructions = isList ? '''Instructions:
+    final instructions = isList
+        ? '''Instructions:
 1. Format EACH record as its own separate bullet point. Do not collapse multiple records into one sentence.
    - Pattern: "- **[Name/Vaccine/Test]** — [Date] — [Value or Status]"
    - Example: "- **Influenza vaccine** — 2016-08-17 — Completed (preservative-free)"
 2. List every record individually; do not group or summarize across records.
 3. If there is only one record, still use the bullet format and note it is the only one on file.
 4. Use a professional and supportive medical tone.
-5. Do not mention being an AI.$glucoseHint''' : '''Instructions:
+5. Do not mention being an AI.$glucoseHint'''
+        : '''Instructions:
 1. Summarize ONLY the records provided above.
 2. If the records are Immunizations, focus on vaccines and dates.
 3. If the records are Observations, focus on lab values and vitals.
@@ -215,9 +329,12 @@ Instructions:
 7. Use a professional and supportive medical tone.
 8. Be concise and do not mention being an AI.$glucoseHint''';
 
-    return '''<start_of_turn>user
+    final recordLines = summary.map((s) => jsonEncode(s)).toList();
+
+    String render(String historyText, String recordsText) =>
+        '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
-$history
+$historyText
 The user just asked: "$query"
 
 Here are the specific EHR records retrieved for this request (may include Apple Health–synced Observations tagged in source data):
@@ -227,7 +344,26 @@ $instructions
 <end_of_turn>
 <start_of_turn>model
 ''';
+
+    return _fitToBudget(
+      render: render,
+      history: history,
+      recordLines: recordLines,
+      budget: budget,
+    );
   }
+
+  String _buildResponsePrompt(
+    String query,
+    List<Map<String, dynamic>> summary, [
+    List<String>? contextChunks,
+  ]) =>
+      buildResponsePrompt(
+        query,
+        summary,
+        history: _conversationHistory,
+        budget: _promptBudget,
+      );
 
   void clearContext() {
     _conversationHistory.clear();
