@@ -17,6 +17,7 @@ import '../widgets/conversation_message.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/app_bar_logo.dart';
 import '../widgets/typing_indicator_helpers.dart';
+import '../widgets/follow_up_prompts.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -546,19 +547,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _updateFollowUpPrompts(String query) {
     setState(() {
-      if (query.toLowerCase().contains('visit') || query.toLowerCase().contains('encounter')) {
-        _followUpPrompts = ['Show me my immunization record', 'Show me my Test Results'];
-      } else if (query.toLowerCase().contains('immunization') || query.toLowerCase().contains('vaccine')) {
-        _followUpPrompts = ['Show me my recent visits', 'Show me my Test Results'];
-      } else if (query.toLowerCase().contains('test') || query.toLowerCase().contains('result') || query.toLowerCase().contains('diagnostic')) {
-        _followUpPrompts = ['Show me my recent visits', 'Show me my immunization record'];
-      } else {
-        _followUpPrompts = [
-          'Show me my recent visits',
-          'Show me my immunization record',
-          'Show me my Test Results',
-        ];
-      }
+      _followUpPrompts = followUpPromptsFor(query);
     });
   }
 
