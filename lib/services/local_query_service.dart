@@ -367,34 +367,57 @@ class LocalQueryService {
     return out;
   }
   
-  /// Filter resources by code search (for Observations)
-  List<Map<String, dynamic>> _filterByCodeSearch(
+  // Medical term → LOINC codes. Class-level so tests can observe the
+  // mapping and future callers can reuse the same lookup.
+  @visibleForTesting
+  static const Map<String, List<String>> medicalTermLoincCodes = {
+    // Total, LDL, HDL, Triglycerides
+    'cholesterol': ['2093-3', '2085-9', '2089-1', '2571-8'],
+    'ldl': ['2089-1'],
+    'hdl': ['2085-9'],
+    'triglycerides': ['2571-8'],
+    // Glucose / HbA1c family
+    'glucose': ['2339-0', '4548-4'],
+    'blood sugar': ['2339-0', '4548-4'],
+    'cgm': ['2339-0', '4548-4'],
+    'hba1c': ['4548-4'],
+    'a1c': ['4548-4'],
+    'blood pressure': ['85354-9', '8480-6', '8462-4'],
+    'hemoglobin': ['718-7', '4548-4'],
+    'creatinine': ['2160-0'],
+    'sodium': ['2951-2'],
+    'potassium': ['2823-3'],
+    'steps': ['55423-8', '41950-7'],
+    'walking': ['55423-8', '41950-7'],
+    'heart rate': ['8867-4'],
+  };
+
+  /// Word-boundary matcher for [needle] against [haystack]. Matches whole
+  /// words only so a query for "test" does not false-positive against
+  /// "testicular" (WP1-07).
+  static bool _wordBoundaryContains(String haystack, String needle) {
+    if (needle.isEmpty) return false;
+    final escaped = RegExp.escape(needle);
+    return RegExp(r'\b' + escaped + r'\b', caseSensitive: false)
+        .hasMatch(haystack);
+  }
+
+  /// Pure filter function — exposed for tests. Matches in two stages:
+  ///   1. LOINC code lookup when `searchTerm` resolves to codes in
+  ///      [medicalTermLoincCodes]; any resource.code.coding[] whose
+  ///      system is LOINC and whose code is in the list matches.
+  ///   2. Word-boundary match on code.coding[].display, code.text, and
+  ///      resource.text.div. Prevents substring false-positives like
+  ///      "test" matching "testicular examination".
+  @visibleForTesting
+  static List<Map<String, dynamic>> filterByCodeSearch(
     List<Map<String, dynamic>> resources,
     String searchTerm,
   ) {
     final lowerSearch = searchTerm.toLowerCase();
-    
-    // Medical term to LOINC code mappings
-    final codeMappings = {
-      'cholesterol': ['2093-3', '2085-9', '2089-1', '2571-8'], // Total, LDL, HDL, Triglycerides
-      'glucose': ['2339-0', '4548-4'], // Glucose, HbA1c
-      'blood sugar': ['2339-0', '4548-4'],
-      'cgm': ['2339-0', '4548-4'],
-      'hba1c': ['4548-4'],
-      'a1c': ['4548-4'],
-      'blood pressure': ['85354-9', '8480-6', '8462-4'], // BP, Systolic, Diastolic
-      'hemoglobin': ['718-7', '4548-4'], // HGB, HbA1c
-      'creatinine': ['2160-0'],
-      'sodium': ['2951-2'],
-      'potassium': ['2823-3'],
-      'steps': ['55423-8', '41950-7'],
-      'walking': ['55423-8', '41950-7'],
-    };
-    
-    final codesToSearch = codeMappings[lowerSearch] ?? [];
-    
+    final codesToSearch = medicalTermLoincCodes[lowerSearch] ?? const [];
+
     return resources.where((resource) {
-      // Check code.coding for LOINC codes
       final code = resource['code'] as Map<String, dynamic>?;
       if (code != null) {
         final coding = code['coding'] as List?;
@@ -404,39 +427,42 @@ class LocalQueryService {
               final system = c['system'] as String?;
               final codeValue = c['code'] as String?;
               final display = c['display'] as String?;
-              
-              // Check LOINC codes
-              if (system?.contains('loinc') == true && codesToSearch.contains(codeValue)) {
+
+              if (system?.contains('loinc') == true &&
+                  codesToSearch.contains(codeValue)) {
                 return true;
               }
-              
-              // Check display name
-              if (display != null && display.toLowerCase().contains(lowerSearch)) {
+              if (display != null &&
+                  _wordBoundaryContains(display, lowerSearch)) {
                 return true;
               }
             }
           }
         }
-        
-        // Check code.text
+
         final text = code['text'] as String?;
-        if (text != null && text.toLowerCase().contains(lowerSearch)) {
+        if (text != null && _wordBoundaryContains(text, lowerSearch)) {
           return true;
         }
       }
-      
-      // Check resource text
+
       final resourceText = resource['text'] as Map<String, dynamic>?;
       if (resourceText != null) {
         final div = resourceText['div'] as String?;
-        if (div != null && div.toLowerCase().contains(lowerSearch)) {
+        if (div != null && _wordBoundaryContains(div, lowerSearch)) {
           return true;
         }
       }
-      
+
       return false;
     }).toList();
   }
+
+  List<Map<String, dynamic>> _filterByCodeSearch(
+    List<Map<String, dynamic>> resources,
+    String searchTerm,
+  ) =>
+      filterByCodeSearch(resources, searchTerm);
 
   /// Sort resources by a field
   List<Map<String, dynamic>> _sortResources(
