@@ -1,9 +1,8 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart';
 import 'package:llamadart/llamadart.dart';
 import 'package:path_provider/path_provider.dart';
 import '../config/app_config.dart';
@@ -62,30 +61,8 @@ class GemmaModelService {
   static const int _iosMaxPromptChars = 2000;
   static const int _androidMaxPromptChars = 3500;
 
-  /// MedGemma 4B Q4_K_M is ~2.5GB; used when CDN omits Content-Length (chunked).
-  static const int _expectedApproxModelBytes = 2550 * 1024 * 1024;
-
-  /// Dart [HttpClient] defaults to a 15s idle gap between chunks — too short for
-  /// multi-GB Hugging Face CDN downloads on mobile (stream appears to “hang”).
-  static const Duration _downloadIdleTimeout = Duration(minutes: 30);
-  static const Duration _downloadConnectTimeout = Duration(seconds: 90);
-
   static const String _downloadUserAgent =
       'MyWellWallet/1.0 (MedGemma; Flutter; +https://github.com/)';
-
-  static int? _parseTotalBytesFromContentRange(String? header) {
-    if (header == null || header.isEmpty) return null;
-    final slash = header.lastIndexOf('/');
-    if (slash < 0 || slash >= header.length - 1) return null;
-    return int.tryParse(header.substring(slash + 1).trim());
-  }
-
-  static double _progressRatio(int downloaded, int? totalBytes) {
-    if (totalBytes != null && totalBytes > 0) {
-      return (downloaded / totalBytes).clamp(0.0, 1.0);
-    }
-    return (downloaded / _expectedApproxModelBytes).clamp(0.0, 0.99);
-  }
 
   String _capPrompt(String prompt) {
     final limit = Platform.isIOS
@@ -146,7 +123,9 @@ class GemmaModelService {
       final path = await _ensureModelDownloaded();
       _modelPath = path;
       LogService.log('GemmaModelService: Loading model into engine from $path');
-      
+
+      _preloadLlamaNativeDepsOnLinux();
+
       // Platform-aware backend selection
       final LlamaBackend backend;
       if (Platform.isAndroid || Platform.isIOS) {
@@ -227,12 +206,57 @@ class GemmaModelService {
     }
   }
 
-  /// Helper to check if a model file exists and is of valid size (~2.5GB)
+  /// Validity is determined by a sibling `.done` sentinel written only after
+  /// the download reaches [TaskStatus.complete]. The sentinel records the
+  /// final byte count, so a later truncation or replacement of the model file
+  /// is detected as invalid. Avoids baking a size threshold into the code and
+  /// works for any future model swap (different name, different size).
+  static File _sentinelFor(File modelFile) => File('${modelFile.path}.done');
+
+  /// llamadart 0.6.4 ships `libllamadart.so` with a hardcoded CI RUNPATH
+  /// (`/home/runner/work/llamadart-native/.../bin`) that doesn't exist on a
+  /// user's machine, so its `libllama.so.0` and `libggml-base.so.0` siblings
+  /// fail to load even though they're sitting next to it in the Flutter
+  /// bundle's `lib/` directory. Preload them via absolute path so the dynamic
+  /// linker finds them by SONAME when libllamadart is later dlopen'd from a
+  /// worker isolate.
+  static bool _llamaDepsPreloaded = false;
+  static void _preloadLlamaNativeDepsOnLinux() {
+    if (!Platform.isLinux || _llamaDepsPreloaded) return;
+    final exec = Platform.resolvedExecutable;
+    final libDir = '${exec.substring(0, exec.lastIndexOf('/'))}/lib';
+    const deps = [
+      'libggml-base.so.0',
+      'libggml-cpu.so.0',
+      'libggml.so.0',
+      'libllama.so.0',
+    ];
+    for (final name in deps) {
+      try {
+        DynamicLibrary.open('$libDir/$name');
+      } catch (e) {
+        LogService.log('GemmaModelService: preload $name failed: $e');
+      }
+    }
+    _llamaDepsPreloaded = true;
+    LogService.log('GemmaModelService: preloaded llama native deps from $libDir');
+  }
+
   Future<bool> _isValidModelFile(File file) async {
     if (!await file.exists()) return false;
-    final size = await file.length();
-    // The MedGemma 4B Q4_K_M model should be around 2.5GB. We accept anything > 1.5GB.
-    return size > 1500 * 1024 * 1024;
+    final sentinel = _sentinelFor(file);
+    if (!await sentinel.exists()) return false;
+    final recordedSize = int.tryParse((await sentinel.readAsString()).trim());
+    if (recordedSize == null || recordedSize <= 0) return false;
+    return await file.length() == recordedSize;
+  }
+
+  Future<void> _writeCompletionSentinel(File file) async {
+    try {
+      await _sentinelFor(file).writeAsString((await file.length()).toString());
+    } catch (e) {
+      LogService.log('GemmaModelService: failed to write sentinel: $e');
+    }
   }
 
   Future<String> _ensureModelDownloaded() async {
@@ -285,13 +309,6 @@ class GemmaModelService {
 
     try {
       final savedPath = await _downloadModelFile(modelFile);
-      final savedFile = File(savedPath);
-      if (!await _isValidModelFile(savedFile)) {
-        throw HttpException(
-          'Download ended but file is still too small (${(await savedFile.length()) ~/ (1024 * 1024)} MB). '
-          'Try again — progress will resume if the server supports it.',
-        );
-      }
       _currentProgress = 1.0;
       _progressController.add(1.0);
       LogService.log('GemmaModelService: Download complete. Path: $savedPath');
@@ -314,8 +331,154 @@ class GemmaModelService {
     }
   }
 
-  /// iOS/Android: system background transfer (URLSession / DownloadWorker) so locking the device does not stop the download.
-  Future<String> _downloadModelWithBackgroundDownloader(File modelFile) async {
+  /// Interval between pause/resume checkpoints. Each checkpoint forces the
+  /// library to flush ResumeData to disk so an abrupt app kill loses at most
+  /// this much progress rather than restarting from zero.
+  static const Duration _checkpointInterval = Duration(seconds: 60);
+
+  Future<String> _downloadModelFile(File modelFile) {
+    if (Platform.isIOS || Platform.isAndroid) {
+      return _downloadWithBackgroundDownloader(modelFile);
+    }
+    return _downloadWithRangeResume(modelFile);
+  }
+
+  /// Desktop path. Writes directly to [modelFile], using an HTTP Range request
+  /// to continue from whatever bytes are already on disk. The file itself is
+  /// the resume state — no separate checkpoint database, no library-managed
+  /// temp file — so progress honestly reflects `bytesOnDisk / totalBytes`
+  /// whether you're starting fresh, resuming this session's download, or
+  /// resuming a partial from a prior session.
+  Future<String> _downloadWithRangeResume(File modelFile) async {
+    final uri = Uri.parse(AppConfig.gemmaModelUrl);
+    final existingBytes =
+        await modelFile.exists() ? await modelFile.length() : 0;
+
+    final httpClient = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 90)
+      ..idleTimeout = const Duration(minutes: 30);
+
+    HttpClientResponse response;
+    try {
+      var request = await httpClient.getUrl(uri);
+      request.headers.set('User-Agent', _downloadUserAgent);
+      if (existingBytes > 0) {
+        request.headers.set('Range', 'bytes=$existingBytes-');
+        LogService.log(
+          'GemmaModelService: resuming from ${existingBytes ~/ (1024 * 1024)} MB',
+        );
+      }
+      response = await request.close();
+
+      if (response.statusCode == HttpStatus.requestedRangeNotSatisfiable) {
+        // File on disk is >= server's size — treat as corrupt, start over.
+        await response.drain<void>(null);
+        if (await modelFile.exists()) await modelFile.delete();
+        request = await httpClient.getUrl(uri);
+        request.headers.set('User-Agent', _downloadUserAgent);
+        response = await request.close();
+      }
+
+      if (response.statusCode != HttpStatus.ok &&
+          response.statusCode != HttpStatus.partialContent) {
+        await response.drain<void>(null);
+        throw HttpException(
+          'Failed to download model: HTTP ${response.statusCode}',
+          uri: uri,
+        );
+      }
+
+      final isPartial = response.statusCode == HttpStatus.partialContent;
+      int? totalBytes;
+      final contentRange = response.headers.value('content-range');
+      if (contentRange != null) {
+        final slash = contentRange.lastIndexOf('/');
+        if (slash != -1 && slash < contentRange.length - 1) {
+          totalBytes = int.tryParse(contentRange.substring(slash + 1).trim());
+        }
+      }
+      if (totalBytes == null) {
+        final clen = response.contentLength;
+        if (clen > 0) {
+          totalBytes = isPartial ? existingBytes + clen : clen;
+        }
+      }
+      if (totalBytes == null || totalBytes <= 0) {
+        await response.drain<void>(null);
+        throw HttpException(
+          'Could not determine total file size from server headers.',
+          uri: uri,
+        );
+      }
+
+      // Server ignored our Range and returned the full file. Start fresh.
+      if (!isPartial && existingBytes > 0) {
+        await modelFile.delete();
+      }
+
+      final sink = isPartial
+          ? modelFile.openWrite(mode: FileMode.append)
+          : modelFile.openWrite();
+
+      var downloaded = isPartial ? existingBytes : 0;
+      _currentProgress = (downloaded / totalBytes).clamp(0.0, 1.0);
+      _progressController.add(_currentProgress);
+      LogService.log(
+        'GemmaModelService: HTTP ${response.statusCode}; '
+        'total=${totalBytes ~/ (1024 * 1024)} MB, '
+        'starting at ${downloaded ~/ (1024 * 1024)} MB '
+        '(${(_currentProgress * 100).toStringAsFixed(1)}%)',
+      );
+
+      var lastEmitMs = 0;
+      var lastLogBytes = downloaded;
+      try {
+        await for (final chunk in response) {
+          downloaded += chunk.length;
+          sink.add(chunk);
+
+          final now = DateTime.now().millisecondsSinceEpoch;
+          if (now - lastEmitMs >= 250) {
+            lastEmitMs = now;
+            _currentProgress = (downloaded / totalBytes).clamp(0.0, 1.0);
+            _progressController.add(_currentProgress);
+          }
+
+          if (downloaded - lastLogBytes >= 100 * 1024 * 1024) {
+            lastLogBytes = downloaded;
+            LogService.log(
+              'GemmaModelService: ${downloaded ~/ (1024 * 1024)} MB '
+              '(${(downloaded / totalBytes * 100).toStringAsFixed(1)}%)',
+            );
+          }
+        }
+      } finally {
+        await sink.flush();
+        await sink.close();
+      }
+
+      if (downloaded != totalBytes) {
+        throw HttpException(
+          'Download ended at $downloaded / $totalBytes bytes',
+          uri: uri,
+        );
+      }
+
+      _currentProgress = 1.0;
+      _progressController.add(1.0);
+      await _writeCompletionSentinel(modelFile);
+      return modelFile.path;
+    } finally {
+      httpClient.close();
+    }
+  }
+
+  /// Mobile path. `background_downloader` handles OS-managed background
+  /// transfer so a locked screen / backgrounded app doesn't kill the download.
+  /// The library uses its own temp file separate from the final path, so
+  /// progress reflects the library's state (which correctly accounts for a
+  /// resumed task's starting byte, via its own ResumeData).
+  Future<String> _downloadWithBackgroundDownloader(File modelFile) async {
     await FileDownloader().ready;
     final task = DownloadTask(
       taskId: 'mywellwallet_medgemma_4b_q4_k_m',
@@ -330,147 +493,98 @@ class GemmaModelService {
       displayName: 'MedGemma 4B medical model',
     );
 
-    final result = await FileDownloader().download(
-      task,
-      onProgress: (p) {
-        _currentProgress = p;
-        _progressController.add(p);
-      },
-      onStatus: (s) {
-        LogService.log('GemmaModelService: background download status: $s');
-      },
-    );
-
-    if (result.status != TaskStatus.complete) {
-      final detail = result.exception?.toString() ?? result.status.name;
-      throw HttpException(
-        'Background download failed: $detail',
-        uri: Uri.parse(AppConfig.gemmaModelUrl),
-      );
-    }
-
-    final path = await result.task.filePath();
-    if (path != modelFile.path) {
-      LogService.log(
-        'GemmaModelService: model saved at $path (expected ${modelFile.path})',
-      );
-    }
-    final saved = File(path);
-    if (!await _isValidModelFile(saved)) {
-      throw HttpException(
-        'Background download finished but file is missing or too small.',
-        uri: Uri.parse(AppConfig.gemmaModelUrl),
-      );
-    }
-    return path;
-  }
-
-  Future<String> _downloadModelFile(File modelFile) async {
-    if (Platform.isIOS || Platform.isAndroid) {
-      return _downloadModelWithBackgroundDownloader(modelFile);
-    }
-    await _downloadModelWithResilientClient(modelFile);
-    return modelFile.path;
-  }
-
-  /// Desktop: long idle timeout, optional HTTP Range resume, progress when length unknown.
-  Future<void> _downloadModelWithResilientClient(File modelFile) async {
     final uri = Uri.parse(AppConfig.gemmaModelUrl);
-    var resumeFrom = 0;
-    if (await modelFile.exists()) {
-      resumeFrom = await modelFile.length();
-      if (resumeFrom >= 1500 * 1024 * 1024) {
-        return;
-      }
-    }
-
-    final httpClient = HttpClient()
-      ..connectionTimeout = _downloadConnectTimeout
-      ..idleTimeout = _downloadIdleTimeout;
-    final client = IOClient(httpClient);
-
-    try {
-      Future<http.StreamedResponse> sendOnce(int start) async {
-        final request = http.Request('GET', uri);
-        request.headers['User-Agent'] = _downloadUserAgent;
-        if (start > 0) {
-          request.headers['Range'] = 'bytes=$start-';
-          LogService.log(
-            'GemmaModelService: Resuming download from byte $start (${(start / (1024 * 1024)).toStringAsFixed(1)} MB)',
-          );
+    final completer = Completer<TaskStatusUpdate>();
+    final sub = FileDownloader().updates.listen((update) {
+      if (update.task.taskId != task.taskId) return;
+      if (update is TaskProgressUpdate) {
+        _currentProgress = update.progress;
+        _progressController.add(update.progress);
+      } else if (update is TaskStatusUpdate) {
+        LogService.log(
+          'GemmaModelService: background download status: ${update.status.name}',
+        );
+        const terminal = {
+          TaskStatus.complete,
+          TaskStatus.failed,
+          TaskStatus.canceled,
+          TaskStatus.notFound,
+        };
+        if (update.status == TaskStatus.paused && !completer.isCompleted) {
+          // Auto-resume from checkpoint pause. ResumeData is written to
+          // storage asynchronously by the isolate, so we wait briefly before
+          // calling resume() to avoid racing the storage write.
+          final t = update.task;
+          if (t is DownloadTask) {
+            Future.delayed(const Duration(milliseconds: 400), () async {
+              if (completer.isCompleted) return;
+              final ok = await FileDownloader().resume(t);
+              if (!ok && !completer.isCompleted) {
+                LogService.log(
+                  'GemmaModelService: checkpoint resume returned false; '
+                  'enqueueing fresh task to continue',
+                );
+                await FileDownloader().enqueue(t);
+              }
+            });
+          }
+        } else if (terminal.contains(update.status) && !completer.isCompleted) {
+          completer.complete(update);
         }
-        return client.send(request);
+      }
+    });
+
+    Timer? checkpointTimer;
+    try {
+      final resumed = await FileDownloader().resume(task);
+      if (resumed) {
+        LogService.log(
+          'GemmaModelService: resuming prior download (stored Range data found)',
+        );
+      } else {
+        LogService.log(
+          'GemmaModelService: no resume data; enqueueing fresh download',
+        );
+        final enqueued = await FileDownloader().enqueue(task);
+        if (!enqueued) {
+          throw HttpException('Failed to enqueue download task', uri: uri);
+        }
       }
 
-      var streamed = await sendOnce(resumeFrom);
+      checkpointTimer = Timer.periodic(_checkpointInterval, (_) async {
+        if (completer.isCompleted) return;
+        // Just trigger pause. The status listener calls resume() once it sees
+        // TaskStatus.paused, which guarantees ResumeData is persisted first.
+        try {
+          await FileDownloader().pause(task);
+        } catch (e) {
+          LogService.log('GemmaModelService: checkpoint pause: $e');
+        }
+      });
 
-      if (streamed.statusCode == HttpStatus.requestedRangeNotSatisfiable) {
-        if (await _isValidModelFile(modelFile)) return;
-        if (await modelFile.exists()) await modelFile.delete();
-        resumeFrom = 0;
-        streamed = await sendOnce(0);
+      final result = await completer.future;
+      if (result.status != TaskStatus.complete) {
+        final detail = result.exception?.toString() ?? result.status.name;
+        throw HttpException('Background download failed: $detail', uri: uri);
       }
-
-      if (streamed.statusCode != HttpStatus.ok &&
-          streamed.statusCode != HttpStatus.partialContent) {
+      final path = await result.task.filePath();
+      if (path != modelFile.path) {
+        LogService.log(
+          'GemmaModelService: model saved at $path (expected ${modelFile.path})',
+        );
+      }
+      final saved = File(path);
+      if (!await saved.exists()) {
         throw HttpException(
-          'Failed to download model: HTTP ${streamed.statusCode}',
+          'Background download finished but file is missing.',
           uri: uri,
         );
       }
-
-      final partial = streamed.statusCode == HttpStatus.partialContent;
-      if (!partial && resumeFrom > 0) {
-        await modelFile.delete();
-        resumeFrom = 0;
-      }
-
-      final IOSink sink = partial
-          ? modelFile.openWrite(mode: FileMode.append)
-          : modelFile.openWrite();
-
-      var downloaded = partial ? resumeFrom : 0;
-      int? totalBytes = _parseTotalBytesFromContentRange(
-        streamed.headers['content-range'],
-      );
-      final clen = streamed.contentLength;
-      if (totalBytes == null && clen != null && clen > 0) {
-        totalBytes = partial ? downloaded + clen : clen;
-      }
-
-      LogService.log(
-        'GemmaModelService: HTTP ${streamed.statusCode}; '
-        'totalBytes=${totalBytes != null ? (totalBytes / (1024 * 1024)).toStringAsFixed(1) : "?"} MB',
-      );
-
-      var lastEmitMs = 0;
-      var lastLogBytes = downloaded;
-
-      await for (final chunk in streamed.stream) {
-        downloaded += chunk.length;
-        sink.add(chunk);
-
-        final now = DateTime.now().millisecondsSinceEpoch;
-        if (now - lastEmitMs >= 250 || downloaded == totalBytes) {
-          lastEmitMs = now;
-          final p = _progressRatio(downloaded, totalBytes);
-          _currentProgress = p;
-          _progressController.add(p);
-        }
-
-        if (downloaded - lastLogBytes >= 50 * 1024 * 1024) {
-          lastLogBytes = downloaded;
-          LogService.log(
-            'GemmaModelService: ${(downloaded / (1024 * 1024)).toStringAsFixed(0)} MB '
-            '(${(_progressRatio(downloaded, totalBytes) * 100).toStringAsFixed(1)}%)',
-          );
-        }
-      }
-
-      await sink.flush();
-      await sink.close();
+      await _writeCompletionSentinel(saved);
+      return path;
     } finally {
-      client.close();
+      checkpointTimer?.cancel();
+      await sub.cancel();
     }
   }
 }

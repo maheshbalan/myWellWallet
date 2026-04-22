@@ -11,7 +11,6 @@ import 'services/mcp_client.dart';
 import 'services/database_service.dart';
 import 'services/local_query_service.dart';
 import 'services/gemma_rag_service.dart';
-import 'services/gemma_model_service.dart';
 import 'services/log_service.dart';
 import 'providers/patient_provider.dart';
 import 'providers/auth_provider.dart';
@@ -41,9 +40,7 @@ void main() {
     await LogService.init();
     LogService.log('Application starting...');
 
-    if (Platform.isIOS || Platform.isAndroid) {
-      await _initBackgroundFileDownloader();
-    }
+    await _initBackgroundFileDownloader();
 
     // Initialize sqflite for desktop (Linux, Windows, macOS)
     if (Platform.isLinux || Platform.isWindows) {
@@ -97,14 +94,18 @@ Future<void> _initBackgroundFileDownloader() async {
         (Config.useCacheDir, Config.never),
       ],
     );
-    FileDownloader().updates.listen((update) {
-      if (update is TaskProgressUpdate) {
-        LogService.log(
-          'BGDownloader: ${update.task.taskId} ${(update.progress * 100).toStringAsFixed(1)}%',
-        );
-      }
-    });
-    await FileDownloader().start();
+    // Note: FileDownloader().updates is a single-subscription stream.
+    // We do NOT subscribe here — GemmaModelService owns the subscription so
+    // it can drive resume/enqueue/completer logic during a download.
+    // doRescheduleKilledTasks is disabled: it re-enqueues killed tasks from
+    // scratch via enqueue() (not resume()), which consumes any stored
+    // ResumeData without sending a Range header. GemmaModelService calls
+    // FileDownloader().resume(task) itself to use the stored Range data.
+    await FileDownloader().start(
+      doTrackTasks: true,
+      markDownloadedComplete: true,
+      doRescheduleKilledTasks: false,
+    );
     LogService.log('FileDownloader: ready (background downloads enabled).');
   } catch (e, st) {
     LogService.log('FileDownloader init failed: $e');
@@ -158,9 +159,9 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
       // 2. Initialize RAG
       await _gemmaRAGService.initialize();
 
-      // 3. Initialize Gemma model in the background (don't await)
-      LogService.log('Main: Starting background Gemma model initialization...');
-      unawaited(GemmaModelService.instance.ensureInitialized());
+      // Model download/verify is kicked off at login (see login_screen /
+      // registration_screen) so unauthenticated users don't trigger a 2.5GB
+      // download.
 
       // 4. Wait for AuthProvider to load
       int retries = 0;

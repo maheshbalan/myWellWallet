@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +6,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:local_auth/local_auth.dart';
 import '../providers/auth_provider.dart';
 import '../providers/patient_provider.dart';
+import '../services/gemma_model_service.dart';
 import '../widgets/app_bar_logo.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -61,7 +63,8 @@ class _LoginScreenState extends State<LoginScreen> {
             debugPrint('Login context error: $e');
           }
         }
-        
+        unawaited(GemmaModelService.instance.ensureInitialized());
+
         if (mounted) {
           context.go('/');
         }
@@ -141,7 +144,8 @@ class _LoginScreenState extends State<LoginScreen> {
             debugPrint('Login context error: $e');
           }
         }
-        
+        unawaited(GemmaModelService.instance.ensureInitialized());
+
         if (mounted) {
           context.go('/');
         }
