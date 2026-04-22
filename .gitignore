@@ -2,6 +2,8 @@
 crash/
 
 # Miscellaneous
+.env
+*.claude/
 *.class
 *.log
 *.pyc
