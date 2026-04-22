@@ -6,6 +6,7 @@ import 'local_query_service.dart';
 import 'database_service.dart';
 import 'gemma_model_service.dart';
 import 'log_service.dart';
+import 'prompt_sanitizer.dart';
 
 /// Gemma RAG Service - Conversational query processing with RAG context
 /// 
@@ -215,7 +216,7 @@ String _formatHistory() {
   if (_conversationHistory.isEmpty) return '';
   final buffer = StringBuffer();
   // Use up to last 4 turns for context
-  final recentHistory = _conversationHistory.length > 8 
+  final recentHistory = _conversationHistory.length > 8
       ? _conversationHistory.sublist(_conversationHistory.length - 8)
       : _conversationHistory;
 
@@ -229,7 +230,10 @@ String _formatHistory() {
   buffer.writeln('\nPrevious conversation context:');
   for (var msg in historyToInclude) {
     final role = msg['role'] == 'user' ? 'User' : 'Assistant';
-    buffer.writeln('$role: ${msg['content']}');
+    // Sanitize content so a prior turn with injected control markers
+    // can't corrupt the current prompt (WP1-06).
+    final content = sanitizeForPrompt(msg['content'] ?? '');
+    buffer.writeln('$role: $content');
   }
   buffer.writeln();
   return buffer.toString();
@@ -241,6 +245,10 @@ String _buildQueryGenerationPrompt(
   String? patientId,
   List<String> contextChunks,
 ) {
+  // Sanitize user input + history content before interpolating. Prevents
+  // a user query containing Gemma control markers from escaping the user
+  // turn in the query-generation prompt (WP1-06).
+  final safeQuery = sanitizeForPrompt(query);
   final history = _formatHistory();
   final docContext = contextChunks.isEmpty
       ? ''
@@ -254,7 +262,7 @@ String _buildQueryGenerationPrompt(
 You are a FHIR clinical agent. Convert this query into a FHIR JSON query plan.
 $history
 Patient ID: $patientId
-User question: "$query"
+User question: "$safeQuery"
 $docContext
 Guidelines:
 ...

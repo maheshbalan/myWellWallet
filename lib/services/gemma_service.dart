@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'local_rag_service.dart';
 import 'gemma_model_service.dart';
 import 'log_service.dart';
+import 'prompt_sanitizer.dart';
 
 /// Gemma LLM Service for local NLP processing
 class GemmaService {
@@ -196,10 +197,12 @@ class GemmaService {
     List<Map<String, String>> history = const [],
     required int budget,
   }) {
+    final safeQuery = sanitizeForPrompt(query);
+    final safeHistory = sanitizeHistory(history);
     String render(String historyText, String _) => '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
 $historyText
-The user just asked: "$query"
+The user just asked: "$safeQuery"
 
 However, no health records were found in the local database or Medplum server for this specific request.
 
@@ -213,7 +216,7 @@ Instructions:
 ''';
     return _fitToBudget(
       render: render,
-      history: history,
+      history: safeHistory,
       recordLines: const [],
       budget: budget,
     );
@@ -237,13 +240,15 @@ Instructions:
     List<Map<String, String>> history = const [],
     required int budget,
   }) {
+    final safeQuery = sanitizeForPrompt(query);
+    final safeHistory = sanitizeHistory(history);
     final rawJson = jsonEncode(rawData);
 
     String render(String historyText, String recordsText) =>
         '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
 $historyText
-The user just asked: "$query"
+The user just asked: "$safeQuery"
 
 Here is the RAW FHIR EHR data from the server. It may contain technical metadata (like "method", "path", "jsonrpc") which you should IGNORE. Focus ONLY on the clinical records found in the "response" or "entry" fields.
 
@@ -261,7 +266,7 @@ Instructions:
 
     return _fitToBudget(
       render: render,
-      history: history,
+      history: safeHistory,
       recordLines: [rawJson],
       budget: budget,
     );
@@ -299,6 +304,11 @@ Instructions:
     List<Map<String, String>> history = const [],
     required int budget,
   }) {
+    // Sanitize the raw query once; preserve the original for intent
+    // detection (isList / glucose hint) so an injected control marker
+    // can't change downstream branching.
+    final safeQuery = sanitizeForPrompt(query);
+    final safeHistory = sanitizeHistory(history);
     final q = query.toLowerCase();
     final isList = _isListIntent(query);
 
@@ -335,7 +345,7 @@ Instructions:
         '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
 $historyText
-The user just asked: "$query"
+The user just asked: "$safeQuery"
 
 Here are the specific EHR records retrieved for this request (may include Apple Health–synced Observations tagged in source data):
 $recordsText
@@ -347,7 +357,7 @@ $instructions
 
     return _fitToBudget(
       render: render,
-      history: history,
+      history: safeHistory,
       recordLines: recordLines,
       budget: budget,
     );
