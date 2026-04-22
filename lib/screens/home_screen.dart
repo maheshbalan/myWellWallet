@@ -8,6 +8,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
 import '../models/patient.dart';
 import '../providers/query_provider.dart';
+import '../providers/query_concurrency.dart';
 import '../providers/auth_provider.dart';
 import '../providers/patient_provider.dart';
 import '../services/gemma_service.dart';
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   bool _isListening = false;
   bool _speechAvailable = false;
+  bool _isStreaming = false;
   final List<Map<String, dynamic>> _messages = [];
   List<String> _followUpPrompts = [];
   late AnimationController _micAnimationController;
@@ -374,8 +376,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _processQuery() async {
     final query = _queryController.text.trim();
-    if (query.isEmpty) return;
+    final queryProvider = context.read<QueryProvider>();
+    if (!shouldAcceptNewQuery(
+      isStreaming: _isStreaming,
+      isProcessing: queryProvider.isProcessing,
+      query: query,
+    )) {
+      LogService.log(
+        'HomeScreen._processQuery: rejecting concurrent/empty submit '
+        '(isStreaming=$_isStreaming, isProcessing=${queryProvider.isProcessing})',
+      );
+      return;
+    }
 
+    setState(() => _isStreaming = true);
+    try {
+      await _runQuery(query, queryProvider);
+    } finally {
+      if (mounted) {
+        setState(() => _isStreaming = false);
+      } else {
+        _isStreaming = false;
+      }
+    }
+  }
+
+  Future<void> _runQuery(String query, QueryProvider queryProvider) async {
     // Add user message (no auto-scroll: question stays visible; user scrolls or uses down arrow)
     setState(() {
       _messages.add({
@@ -393,7 +419,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
 
     try {
-      final queryProvider = context.read<QueryProvider>();
       await queryProvider.processQuery(query);
 
       // Remove typing indicator by tag; tolerates any interleaving mutation
@@ -587,6 +612,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isProcessing = context.watch<QueryProvider>().isProcessing;
+    final inputLocked =
+        isInputLocked(isStreaming: _isStreaming, isProcessing: isProcessing);
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
@@ -772,7 +800,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           borderRadius: BorderRadius.circular(20),
                           elevation: 0,
                           child: InkWell(
-                            onTap: () => _handleFollowUpPrompt(prompt),
+                            onTap: inputLocked
+                                ? null
+                                : () => _handleFollowUpPrompt(prompt),
                             borderRadius: BorderRadius.circular(20),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -862,7 +892,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               maxLines: 1,
                               textCapitalization: TextCapitalization.sentences,
                               onSubmitted: (_) => _processQuery(),
-                              enabled: !_isListening,
+                              enabled: !_isListening && !inputLocked,
                             ),
                           ),
                           // Microphone button
@@ -891,7 +921,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 color: Colors.white,
                                 size: 26,
                               ),
-                              onPressed: _toggleListening,
+                              onPressed: inputLocked ? null : _toggleListening,
                               tooltip: _isListening
                                   ? 'Stop'
                                   : 'Voice input',
@@ -923,7 +953,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         color: Colors.white,
                         size: 24,
                       ),
-                      onPressed: _processQuery,
+                      onPressed: inputLocked ? null : _processQuery,
                       tooltip: 'Send',
                     ),
                   ),

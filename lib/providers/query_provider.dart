@@ -8,6 +8,7 @@ import '../services/data_sync_service.dart';
 import '../services/log_service.dart';
 import 'auth_provider.dart';
 import 'patient_provider.dart';
+import 'query_concurrency.dart';
 
 class QueryProvider with ChangeNotifier {
   final MCPClient mcpClient;
@@ -54,7 +55,16 @@ class QueryProvider with ChangeNotifier {
 
   /// Process a natural language query with local-first approach
   Future<void> processQuery(String query) async {
-    if (query.trim().isEmpty) return;
+    if (!shouldAcceptNewQuery(
+      isStreaming: false, // streaming lives in the UI layer
+      isProcessing: _isProcessing,
+      query: query,
+    )) {
+      LogService.log(
+        'QueryProvider: Rejecting concurrent/empty query (isProcessing=$_isProcessing)',
+      );
+      return;
+    }
     LogService.log('QueryProvider: Processing query: "$query"');
 
     _isProcessing = true;
