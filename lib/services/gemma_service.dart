@@ -7,12 +7,27 @@ import 'prompt_sanitizer.dart';
 
 /// Gemma LLM Service for local NLP processing
 class GemmaService {
+  /// Default streaming timeout. 90s is comfortable on CPU for MedGemma 4B;
+  /// tests pass a much shorter duration.
+  static const Duration defaultStreamTimeout = Duration(seconds: 90);
+
+  /// Trailing notice yielded when a timeout fires after tokens were already
+  /// streamed — the user sees partial output plus this note. NOT stored in
+  /// conversation history.
+  static const String truncationNotice =
+      '\n\n_(response truncated — the model took too long; try rephrasing)_';
+
   final List<Map<String, String>> _conversationHistory = [];
   final LocalRAGService _ragService = LocalRAGService();
   bool _ragInitialized = false;
   final int? _promptBudgetOverride;
+  final Duration _streamTimeout;
 
-  GemmaService({int? promptBudget}) : _promptBudgetOverride = promptBudget;
+  GemmaService({
+    int? promptBudget,
+    Duration streamTimeout = defaultStreamTimeout,
+  })  : _promptBudgetOverride = promptBudget,
+        _streamTimeout = streamTimeout;
 
   int get _promptBudget =>
       _promptBudgetOverride ?? GemmaModelService.promptBudgetForPlatform();
@@ -60,35 +75,15 @@ class GemmaService {
         }
         
         LogService.log('GemmaService: Generating AI response...');
-        
-        bool receivedTokens = false;
-        String fullResponse = '';
-        
-        // Use a 90-second timeout for the stream on CPU
-        final stream = gemma.generateStream(prompt).timeout(
-          const Duration(seconds: 90),
-          onTimeout: (sink) {
-            LogService.log('GemmaService: MedGemma stream timed out.');
-            sink.close();
-          },
-        );
 
-        await for (final token in stream) {
-          receivedTokens = true;
-          fullResponse += token;
-          yield token;
-        }
-        
-        if (receivedTokens) {
-          addToHistory('model', fullResponse.trim());
-        } else {
-          LogService.log('GemmaService: AI yielded no tokens. Falling back to structured view.');
-          if (summary.isNotEmpty) {
-            yield _formatSummaryAsMarkdown(summary);
-          } else {
-            yield 'I processed your request but found no clinical records to display. Please ensure your data is synced with the Medplum server.';
-          }
-        }
+        yield* applyTimeoutAndFallback(
+          tokens: gemma.generateStream(prompt),
+          timeout: _streamTimeout,
+          summary: summary,
+          noRecordsMessage:
+              'I processed your request but found no clinical records to display. Please ensure your data is synced with the Medplum server.',
+          recordModelTurn: (text) => addToHistory('model', text),
+        );
         return;
       } catch (e) {
         LogService.log('GemmaService: AI Error: $e');
@@ -554,7 +549,8 @@ $instructions
     }
   }
 
-  String _formatSummaryAsMarkdown(List<Map<String, dynamic>> summary) {
+  @visibleForTesting
+  static String formatSummaryAsMarkdown(List<Map<String, dynamic>> summary) {
     final buffer = StringBuffer();
     for (var item in summary) {
       final type = item['Type'] ?? 'Record';
@@ -568,6 +564,73 @@ $instructions
       buffer.writeln();
     }
     return buffer.toString();
+  }
+
+  String _formatSummaryAsMarkdown(List<Map<String, dynamic>> summary) =>
+      formatSummaryAsMarkdown(summary);
+
+  /// Consume [tokens], apply [timeout] with a clean close on fire, and
+  /// shape the output so callers always see one of three coherent endings:
+  ///   1. Normal completion: yield each token verbatim and record the
+  ///      trimmed full text via [recordModelTurn].
+  ///   2. Timeout after tokens arrived: yield the tokens AND a trailing
+  ///      [truncationNotice] so the user knows the response was cut. The
+  ///      notice is NOT included in the recorded model turn.
+  ///   3. Zero tokens (whether the stream ended cleanly or timed out):
+  ///      skip [recordModelTurn] and yield a structured markdown summary
+  ///      of [summary], or [noRecordsMessage] if [summary] is empty.
+  ///
+  /// Factored out of [generateStreamingResponse] so tests can exercise
+  /// it with a scripted stream and a short timeout without needing a
+  /// real MedGemma instance (WP1-12).
+  @visibleForTesting
+  static Stream<String> applyTimeoutAndFallback({
+    required Stream<String> tokens,
+    required Duration timeout,
+    required List<Map<String, dynamic>> summary,
+    required String noRecordsMessage,
+    required void Function(String fullResponse) recordModelTurn,
+  }) async* {
+    var receivedTokens = false;
+    var timedOut = false;
+    final full = StringBuffer();
+
+    final timed = tokens.timeout(
+      timeout,
+      onTimeout: (sink) {
+        timedOut = true;
+        LogService.log('GemmaService: stream timed out after ${timeout.inMilliseconds}ms');
+        sink.close();
+      },
+    );
+
+    await for (final token in timed) {
+      receivedTokens = true;
+      full.write(token);
+      yield token;
+    }
+
+    if (receivedTokens) {
+      recordModelTurn(full.toString().trim());
+      if (timedOut) {
+        LogService.log(
+          'GemmaService: stream timed out mid-response '
+          '(${full.length} chars received); appending truncation notice',
+        );
+        yield truncationNotice;
+      }
+    } else {
+      LogService.log(
+        timedOut
+            ? 'GemmaService: stream timed out with zero tokens; falling back'
+            : 'GemmaService: stream ended with zero tokens; falling back',
+      );
+      if (summary.isNotEmpty) {
+        yield formatSummaryAsMarkdown(summary);
+      } else {
+        yield noRecordsMessage;
+      }
+    }
   }
 
   String _formatDateString(dynamic date) {
