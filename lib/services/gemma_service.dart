@@ -45,19 +45,18 @@ class GemmaService {
 
     if (gemma.isReady) {
       try {
-        if (!_ragInitialized) {
-          await _ragService.initialize();
-          _ragInitialized = true;
-        }
-        final contextChunks = await _ragService.retrieveContext(query);
-        
+        // NOTE: LocalRAGService.retrieveContext used to run here and its
+        // chunks were threaded into the prompt builders, but the builders
+        // never actually inserted them into the prompt string. WP1-10
+        // removed the dead plumbing — the intent phase (GemmaRAGService)
+        // still uses RAG chunks; response formatting does not.
         String prompt;
         if (fhirData == null || fhirData.isEmpty) {
-          prompt = _buildNoDataResponsePrompt(query, contextChunks);
+          prompt = _buildNoDataResponsePrompt(query);
         } else if (summary.isEmpty) {
-          prompt = _buildRawDataResponsePrompt(query, fhirData, contextChunks);
+          prompt = _buildRawDataResponsePrompt(query, fhirData);
         } else {
-          prompt = _buildResponsePrompt(query, summary, contextChunks);
+          prompt = _buildResponsePrompt(query, summary);
         }
         
         LogService.log('GemmaService: Generating AI response...');
@@ -222,8 +221,7 @@ Instructions:
     );
   }
 
-  String _buildNoDataResponsePrompt(String query, [List<String>? contextChunks]) =>
-      buildNoDataResponsePrompt(
+  String _buildNoDataResponsePrompt(String query) => buildNoDataResponsePrompt(
         query,
         history: _conversationHistory,
         budget: _promptBudget,
@@ -274,9 +272,8 @@ Instructions:
 
   String _buildRawDataResponsePrompt(
     String query,
-    Map<String, dynamic> rawData, [
-    List<String>? contextChunks,
-  ]) =>
+    Map<String, dynamic> rawData,
+  ) =>
       buildRawDataResponsePrompt(
         query,
         rawData,
@@ -365,9 +362,8 @@ $instructions
 
   String _buildResponsePrompt(
     String query,
-    List<Map<String, dynamic>> summary, [
-    List<String>? contextChunks,
-  ]) =>
+    List<Map<String, dynamic>> summary,
+  ) =>
       buildResponsePrompt(
         query,
         summary,
