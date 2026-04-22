@@ -16,6 +16,7 @@ import '../services/log_service.dart';
 import '../widgets/conversation_message.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/app_bar_logo.dart';
+import '../widgets/typing_indicator_helpers.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -386,22 +387,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _followUpPrompts = [];
     });
 
-    // Add typing indicator
+    // Add typing indicator (tagged so removal is identity-based, not positional)
     setState(() {
-      _messages.add({
-        'isUser': false,
-        'message': 'typing',
-        'timestamp': DateTime.now(),
-      });
+      _messages.add(buildTypingIndicator());
     });
 
     try {
       final queryProvider = context.read<QueryProvider>();
       await queryProvider.processQuery(query);
 
-      // Remove typing indicator
+      // Remove typing indicator by tag; tolerates any interleaving mutation
       setState(() {
-        _messages.removeLast();
+        removeTypingIndicator(_messages);
       });
 
       if (queryProvider.error != null) {
@@ -498,9 +495,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (e) {
       LogService.log('HomeScreen error: $e');
       setState(() {
-        if (_messages.isNotEmpty && _messages.last['message'] == 'typing') {
-          _messages.removeLast();
-        }
+        removeTypingIndicator(_messages);
         _messages.add({
           'isUser': false,
           'message': 'Sorry, I encountered an error processing your request: $e',
@@ -689,7 +684,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
                       final message = _messages[index];
-                      if (message['message'] == 'typing') {
+                      if (isTypingIndicator(message)) {
                         return const TypingIndicator();
                       }
                       return Padding(
