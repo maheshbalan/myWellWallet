@@ -420,9 +420,17 @@ class LocalRAGService {
       return directMapping[lowerTerm];
     }
 
-    // 2. Check for partial matches in direct mapping
+    // 2. Word-boundary phrase match. Forward direction only: does the
+    //    query CONTAIN the key as a whole word/phrase? Reverse-direction
+    //    matching (key.contains(query)) was dropped — it caused tiny
+    //    user tokens like "med" to win against the "medication" key and
+    //    produced false positives for things like "meditation" (WP1-08).
     for (var entry in directMapping.entries) {
-      if (lowerTerm.contains(entry.key) || entry.key.contains(lowerTerm)) {
+      final escaped = RegExp.escape(entry.key);
+      // \b...\b matches the key as a whole word/phrase. Both ends must
+      // land on a word boundary, so "medication" does NOT match inside
+      // "medications"; we rely on the plural forms being in the map.
+      if (RegExp(r'\b' + escaped + r'\b').hasMatch(lowerTerm)) {
         return entry.value;
       }
     }
