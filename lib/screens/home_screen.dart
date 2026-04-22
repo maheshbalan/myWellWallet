@@ -11,7 +11,6 @@ import '../providers/query_provider.dart';
 import '../providers/query_concurrency.dart';
 import '../providers/auth_provider.dart';
 import '../providers/patient_provider.dart';
-import '../services/gemma_service.dart';
 import '../services/gemma_model_service.dart';
 import '../services/log_service.dart';
 import '../widgets/conversation_message.dart';
@@ -30,7 +29,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final _queryController = TextEditingController();
   final _scrollController = ScrollController();
   final stt.SpeechToText _speech = stt.SpeechToText();
-  final GemmaService _gemmaService = GemmaService();
+  // NOTE: the canonical GemmaService lives on QueryProvider
+  // (context.read<QueryProvider>().gemmaService). HomeScreen used to
+  // construct a second instance here, which meant conversation history
+  // diverged between the two — WP1-09 removed that.
 
   bool _isListening = false;
   bool _speechAvailable = false;
@@ -442,11 +444,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         if (result['markdown'] != null) {
           final response = result['markdown'] as String;
           _addAssistantMessage(response, isMarkdown: true);
-          // Sync conversation history so both services are aware of this exchange.
-          // GemmaRAGService already has the user query (added in processQuery),
-          // so we only need to add the assistant response there.
-          _gemmaService.addToHistory('user', query);
-          _gemmaService.addToHistory('model', response);
+          // Markdown branch doesn't invoke generateStreamingResponse, so
+          // record both sides of the exchange on the shared GemmaService
+          // here. (Streaming branches below let generateStreamingResponse
+          // record them internally.)
+          queryProvider.gemmaService.addToHistory('user', query);
+          queryProvider.gemmaService.addToHistory('model', response);
           queryProvider.addAssistantResponseToHistory(response);
         } else if (result['result'] != null || result['resources'] != null) {
           // Generate response using Gemma service WITH STREAMING
@@ -468,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           final int lastIndex = _messages.length - 1;
           String fullResponse = '';
           
-          await for (final token in _gemmaService.generateStreamingResponse(query, fhirData)) {
+          await for (final token in queryProvider.gemmaService.generateStreamingResponse(query, fhirData)) {
             fullResponse += token;
             if (mounted && _messages.length > lastIndex) {
               setState(() {
@@ -498,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           final int lastIndex = _messages.length - 1;
           String fullResponse = '';
 
-          await for (final token in _gemmaService.generateStreamingResponse(query, {})) {
+          await for (final token in queryProvider.gemmaService.generateStreamingResponse(query, {})) {
             fullResponse += token;
             if (mounted && _messages.length > lastIndex) {
               setState(() {
@@ -592,7 +595,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _messages.clear();
       _addWelcomeMessage();
       _queryController.clear();
-      _gemmaService.clearContext();
+      // clearResults() on QueryProvider now clears the canonical GemmaService
+      // and the GemmaRAGService in one call (both are owned by the provider),
+      // so there's no second instance to reset here.
       context.read<QueryProvider>().clearResults();
     });
   }
