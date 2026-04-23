@@ -60,22 +60,74 @@ class GemmaModelService {
 
   static const int _iosMaxPromptChars = 2000;
   static const int _androidMaxPromptChars = 3500;
+  static const int _desktopMaxPromptChars = 200000;
 
   static const String _downloadUserAgent =
       'MyWellWallet/1.0 (MedGemma; Flutter; +https://github.com/)';
 
-  String _capPrompt(String prompt) {
-    final limit = Platform.isIOS
-        ? _iosMaxPromptChars
-        : (Platform.isAndroid ? _androidMaxPromptChars : 200000);
-    if (prompt.length > limit) {
-      LogService.log(
-        'GemmaModelService: Truncating prompt from ${prompt.length} to $limit chars.',
-      );
-      return prompt.substring(0, limit);
-    }
-    return prompt;
+  /// Platform-aware prompt character budget (iOS 2000 / Android 3500 /
+  /// desktop 200k). Exposed so prompt builders can size their content ahead
+  /// of the hard cap in [capPromptToBudget].
+  static int promptBudgetForPlatform() {
+    if (Platform.isIOS) return _iosMaxPromptChars;
+    if (Platform.isAndroid) return _androidMaxPromptChars;
+    return _desktopMaxPromptChars;
   }
+
+  /// Trim [prompt] to fit within [budget] characters while preserving the
+  /// trailing Gemma chat-turn marker (`<start_of_turn>model`). Naive
+  /// substring truncation can chop the marker mid-string and leave the
+  /// model with an un-terminated user turn, which produces garbage output
+  /// or a stalled stream. This function clips the BODY of the prompt and
+  /// always keeps the marker suffix intact.
+  static String capPromptToBudget(String prompt, int budget) {
+    if (prompt.length <= budget) return prompt;
+
+    const modelMarker = '<start_of_turn>model';
+    final markerIdx = prompt.lastIndexOf(modelMarker);
+    if (markerIdx < 0) {
+      LogService.log(
+        'GemmaModelService: capPromptToBudget — no model marker found; '
+        'clipping prompt from ${prompt.length} to $budget',
+      );
+      return prompt.substring(0, budget);
+    }
+
+    final tail = prompt.substring(markerIdx);
+    if (tail.length >= budget) {
+      // Degenerate: marker alone exceeds budget. Return it anyway so the
+      // model sees at least a well-formed terminator.
+      LogService.log(
+        'GemmaModelService: capPromptToBudget — marker tail exceeds budget '
+        '(${tail.length} > $budget); returning marker only',
+      );
+      return tail;
+    }
+
+    const truncationNotice = '\n...[truncated]...\n';
+    final bodyBudget = budget - tail.length - truncationNotice.length;
+    if (bodyBudget <= 0) {
+      LogService.log(
+        'GemmaModelService: capPromptToBudget — no room for body; '
+        'returning marker only',
+      );
+      return tail;
+    }
+
+    final body = prompt.substring(0, markerIdx);
+    final clippedBody = body.length > bodyBudget
+        ? body.substring(0, bodyBudget) + truncationNotice
+        : body;
+    LogService.log(
+      'GemmaModelService: capPromptToBudget — trimmed body from '
+      '${body.length} to ${clippedBody.length} chars (budget $budget, '
+      'marker preserved)',
+    );
+    return clippedBody + tail;
+  }
+
+  String _capPrompt(String prompt) =>
+      capPromptToBudget(prompt, promptBudgetForPlatform());
 
   LlamaEngine? _engine;
   bool _initialized = false;

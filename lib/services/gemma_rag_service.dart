@@ -6,6 +6,7 @@ import 'local_query_service.dart';
 import 'database_service.dart';
 import 'gemma_model_service.dart';
 import 'log_service.dart';
+import 'prompt_sanitizer.dart';
 
 /// Gemma RAG Service - Conversational query processing with RAG context
 /// 
@@ -23,10 +24,6 @@ class GemmaRAGService {
   // Conversation history for context
   final List<Map<String, String>> _conversationHistory = [];
 
-  // Track the last successfully resolved resource type so follow-up questions
-  // can reuse it instead of triggering a generic clarification.
-  String? _lastSuccessfulResourceType;
-  
   GemmaRAGService({
     required LocalQueryService queryService,
     required DatabaseService databaseService,
@@ -126,9 +123,6 @@ class GemmaRAGService {
       };
     }
 
-    // Track resource type for follow-up context resolution
-    _lastSuccessfulResourceType = queryPlan['resourceType'] as String?;
-
     return {
       'type': 'queryPlan',
       'queryPlan': queryPlan,
@@ -222,7 +216,7 @@ String _formatHistory() {
   if (_conversationHistory.isEmpty) return '';
   final buffer = StringBuffer();
   // Use up to last 4 turns for context
-  final recentHistory = _conversationHistory.length > 8 
+  final recentHistory = _conversationHistory.length > 8
       ? _conversationHistory.sublist(_conversationHistory.length - 8)
       : _conversationHistory;
 
@@ -236,7 +230,10 @@ String _formatHistory() {
   buffer.writeln('\nPrevious conversation context:');
   for (var msg in historyToInclude) {
     final role = msg['role'] == 'user' ? 'User' : 'Assistant';
-    buffer.writeln('$role: ${msg['content']}');
+    // Sanitize content so a prior turn with injected control markers
+    // can't corrupt the current prompt (WP1-06).
+    final content = sanitizeForPrompt(msg['content'] ?? '');
+    buffer.writeln('$role: $content');
   }
   buffer.writeln();
   return buffer.toString();
@@ -248,6 +245,10 @@ String _buildQueryGenerationPrompt(
   String? patientId,
   List<String> contextChunks,
 ) {
+  // Sanitize user input + history content before interpolating. Prevents
+  // a user query containing Gemma control markers from escaping the user
+  // turn in the query-generation prompt (WP1-06).
+  final safeQuery = sanitizeForPrompt(query);
   final history = _formatHistory();
   final docContext = contextChunks.isEmpty
       ? ''
@@ -261,7 +262,7 @@ String _buildQueryGenerationPrompt(
 You are a FHIR clinical agent. Convert this query into a FHIR JSON query plan.
 $history
 Patient ID: $patientId
-User question: "$query"
+User question: "$safeQuery"
 $docContext
 Guidelines:
 ...
@@ -300,36 +301,6 @@ Respond ONLY with valid JSON.
     final result = _interpretWithRules(lowerQuery, contextChunks);
     if (result != null) {
       return result;
-    }
-
-    // If there is prior conversation context and we know the last topic,
-    // treat this as a follow-up and reuse the previous resource type rather
-    // than showing a generic clarification prompt.
-    if (_conversationHistory.length > 1 && _lastSuccessfulResourceType != null) {
-      LogService.log(
-        'GemmaRAGService: No rule match — treating as follow-up, reusing $_lastSuccessfulResourceType',
-      );
-      final isObservation = _lastSuccessfulResourceType == 'Observation';
-      // Use a higher count when the user explicitly wants a full/complete list.
-      final wantsAll = lowerQuery.contains('full') ||
-          lowerQuery.contains('all') ||
-          lowerQuery.contains('complete') ||
-          lowerQuery.contains('more') ||
-          lowerQuery.contains('every');
-      final count = wantsAll
-          ? (isObservation ? 50 : 50)
-          : (isObservation ? 20 : 10);
-      return {
-        'needsClarification': false,
-        'queryPlan': {
-          'resourceType': _lastSuccessfulResourceType,
-          'filters': {
-            '_count': count,
-            '_sort': '-date',
-          },
-          if (isObservation) 'dataSources': ['ehr-fhir', 'apple-health'],
-        },
-      };
     }
 
     // Default fallback if everything else fails
@@ -511,6 +482,36 @@ Respond ONLY with valid JSON.
         }
       };
     }
+    if (_matches(lowerQuery, ['medication', 'medicine', 'drug', 'prescription', 'pill', 'rx'])) {
+      LogService.log('GemmaRAGService: Preset match -> MedicationStatement');
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': 'MedicationStatement',
+          'filters': {'_count': 20, '_sort': '-date'}
+        }
+      };
+    }
+    if (_matches(lowerQuery, ['allergy', 'allergies', 'allergic'])) {
+      LogService.log('GemmaRAGService: Preset match -> AllergyIntolerance');
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': 'AllergyIntolerance',
+          'filters': {'_count': 20, '_sort': '-date'}
+        }
+      };
+    }
+    if (_matches(lowerQuery, ['condition', 'diagnosis', 'diagnoses', 'diagnosed', 'chronic', 'disease', 'illness', 'problem list'])) {
+      LogService.log('GemmaRAGService: Preset match -> Condition');
+      return {
+        'needsClarification': false,
+        'queryPlan': {
+          'resourceType': 'Condition',
+          'filters': {'_count': 20, '_sort': '-date'}
+        }
+      };
+    }
     if (_matches(lowerQuery, ['observation', 'lab value', 'level', 'cholesterol', 'blood pressure', 'vital', 'heart rate']) ||
         RegExp(r'\bhr\b').hasMatch(lowerQuery)) {
       LogService.log('GemmaRAGService: Keyword match -> Observation');
@@ -676,7 +677,6 @@ Respond ONLY with valid JSON.
   /// Clear conversation history
   void clearHistory() {
     _conversationHistory.clear();
-    _lastSuccessfulResourceType = null;
   }
 
   /// Get conversation history

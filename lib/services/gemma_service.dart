@@ -3,12 +3,34 @@ import 'package:flutter/foundation.dart';
 import 'local_rag_service.dart';
 import 'gemma_model_service.dart';
 import 'log_service.dart';
+import 'prompt_sanitizer.dart';
 
 /// Gemma LLM Service for local NLP processing
 class GemmaService {
+  /// Default streaming timeout. 90s is comfortable on CPU for MedGemma 4B;
+  /// tests pass a much shorter duration.
+  static const Duration defaultStreamTimeout = Duration(seconds: 90);
+
+  /// Trailing notice yielded when a timeout fires after tokens were already
+  /// streamed — the user sees partial output plus this note. NOT stored in
+  /// conversation history.
+  static const String truncationNotice =
+      '\n\n_(response truncated — the model took too long; try rephrasing)_';
+
   final List<Map<String, String>> _conversationHistory = [];
   final LocalRAGService _ragService = LocalRAGService();
   bool _ragInitialized = false;
+  final int? _promptBudgetOverride;
+  final Duration _streamTimeout;
+
+  GemmaService({
+    int? promptBudget,
+    Duration streamTimeout = defaultStreamTimeout,
+  })  : _promptBudgetOverride = promptBudget,
+        _streamTimeout = streamTimeout;
+
+  int get _promptBudget =>
+      _promptBudgetOverride ?? GemmaModelService.promptBudgetForPlatform();
 
   void setContext(String context) {}
 
@@ -38,51 +60,30 @@ class GemmaService {
 
     if (gemma.isReady) {
       try {
-        if (!_ragInitialized) {
-          await _ragService.initialize();
-          _ragInitialized = true;
-        }
-        final contextChunks = await _ragService.retrieveContext(query);
-        
+        // NOTE: LocalRAGService.retrieveContext used to run here and its
+        // chunks were threaded into the prompt builders, but the builders
+        // never actually inserted them into the prompt string. WP1-10
+        // removed the dead plumbing — the intent phase (GemmaRAGService)
+        // still uses RAG chunks; response formatting does not.
         String prompt;
         if (fhirData == null || fhirData.isEmpty) {
-          prompt = _buildNoDataResponsePrompt(query, contextChunks);
+          prompt = _buildNoDataResponsePrompt(query);
         } else if (summary.isEmpty) {
-          prompt = _buildRawDataResponsePrompt(query, fhirData, contextChunks);
+          prompt = _buildRawDataResponsePrompt(query, fhirData);
         } else {
-          prompt = _buildResponsePrompt(query, summary, contextChunks);
+          prompt = _buildResponsePrompt(query, summary);
         }
         
         LogService.log('GemmaService: Generating AI response...');
-        
-        bool receivedTokens = false;
-        String fullResponse = '';
-        
-        // Use a 90-second timeout for the stream on CPU
-        final stream = gemma.generateStream(prompt).timeout(
-          const Duration(seconds: 90),
-          onTimeout: (sink) {
-            LogService.log('GemmaService: MedGemma stream timed out.');
-            sink.close();
-          },
-        );
 
-        await for (final token in stream) {
-          receivedTokens = true;
-          fullResponse += token;
-          yield token;
-        }
-        
-        if (receivedTokens) {
-          addToHistory('model', fullResponse.trim());
-        } else {
-          LogService.log('GemmaService: AI yielded no tokens. Falling back to structured view.');
-          if (summary.isNotEmpty) {
-            yield _formatSummaryAsMarkdown(summary);
-          } else {
-            yield 'I processed your request but found no clinical records to display. Please ensure your data is synced with the Medplum server.';
-          }
-        }
+        yield* applyTimeoutAndFallback(
+          tokens: gemma.generateStream(prompt),
+          timeout: _streamTimeout,
+          summary: summary,
+          noRecordsMessage:
+              'I processed your request but found no clinical records to display. Please ensure your data is synced with the Medplum server.',
+          recordModelTurn: (text) => addToHistory('model', text),
+        );
         return;
       } catch (e) {
         LogService.log('GemmaService: AI Error: $e');
@@ -102,24 +103,26 @@ class GemmaService {
     }
   }
 
-  String _formatHistory() {
-    if (_conversationHistory.isEmpty) return '';
+  /// Render conversation history as the "Previous conversation context" block
+  /// used inside the user-turn prompt. Always drops the trailing `user`
+  /// entry on the assumption that it's the current query (which the prompt
+  /// body states explicitly via "The user just asked: ..."). Static and
+  /// pure for testability.
+  @visibleForTesting
+  static String formatHistoryAsText(List<Map<String, String>> history) {
+    if (history.isEmpty) return '';
+    // Keep at most the last 8 entries (~4 turn pairs) so the context block
+    // doesn't dominate the prompt budget.
+    final recent = history.length > 8
+        ? history.sublist(history.length - 8)
+        : history;
+    final toInclude = recent.isNotEmpty && recent.last['role'] == 'user'
+        ? recent.sublist(0, recent.length - 1)
+        : recent;
+    if (toInclude.isEmpty) return '';
     final buffer = StringBuffer();
-    // Use up to last 4 turns for context to keep prompt size manageable
-    final recentHistory = _conversationHistory.length > 8 
-        ? _conversationHistory.sublist(_conversationHistory.length - 8)
-        : _conversationHistory;
-    
-    // We don't include the very last entry if it's the current query (added in generateStreamingResponse)
-    // because it will be explicitly listed as "The user asked: ..."
-    final historyToInclude = recentHistory.isNotEmpty && recentHistory.last['role'] == 'user'
-        ? recentHistory.sublist(0, recentHistory.length - 1)
-        : recentHistory;
-
-    if (historyToInclude.isEmpty) return '';
-
     buffer.writeln('\nPrevious conversation context:');
-    for (var msg in historyToInclude) {
+    for (final msg in toInclude) {
       final role = msg['role'] == 'user' ? 'User' : 'Assistant';
       buffer.writeln('$role: ${msg['content']}');
     }
@@ -127,12 +130,73 @@ class GemmaService {
     return buffer.toString();
   }
 
-  String _buildNoDataResponsePrompt(String query, [List<String>? contextChunks]) {
-    final history = _formatHistory();
-    return '''<start_of_turn>user
+  /// Iteratively build a prompt that fits within [budget]. Drops oldest
+  /// history turn pairs first, then trims tail records, and finally falls
+  /// back to [GemmaModelService.capPromptToBudget] which preserves the
+  /// `<start_of_turn>model` marker. Returns the resulting prompt string.
+  static String _fitToBudget({
+    required String Function(String historyText, String recordsText) render,
+    required List<Map<String, String>> history,
+    required List<String> recordLines,
+    required int budget,
+  }) {
+    var hist = List<Map<String, String>>.from(history);
+    final rec = List<String>.from(recordLines);
+
+    String build() => render(formatHistoryAsText(hist), rec.join('\n'));
+    var prompt = build();
+    if (prompt.length <= budget) return prompt;
+
+    // Phase 1: drop oldest history pairs (2 at a time) until fits or empty.
+    final startHist = hist.length;
+    while (prompt.length > budget && hist.length >= 2) {
+      hist.removeRange(0, 2);
+      prompt = build();
+    }
+    if (prompt.length <= budget) {
+      LogService.log(
+        'GemmaService._fitToBudget: trimmed history from $startHist to '
+        '${hist.length} entries (budget $budget)',
+      );
+      return prompt;
+    }
+
+    // Phase 2: drop tail record lines until fits or empty.
+    final startRec = rec.length;
+    while (prompt.length > budget && rec.isNotEmpty) {
+      rec.removeLast();
+      prompt = build();
+    }
+    if (prompt.length <= budget) {
+      LogService.log(
+        'GemmaService._fitToBudget: trimmed records from $startRec to '
+        '${rec.length} entries (budget $budget)',
+      );
+      return prompt;
+    }
+
+    // Safety net: hard-clip while preserving the model-turn marker.
+    LogService.log(
+      'GemmaService._fitToBudget: fixed overhead exceeds budget $budget; '
+      'applying capPromptToBudget',
+    );
+    return GemmaModelService.capPromptToBudget(prompt, budget);
+  }
+
+  /// Pure builder for the "no data found" prompt. Falls back to
+  /// budget-aware trimming via [_fitToBudget].
+  @visibleForTesting
+  static String buildNoDataResponsePrompt(
+    String query, {
+    List<Map<String, String>> history = const [],
+    required int budget,
+  }) {
+    final safeQuery = sanitizeForPrompt(query);
+    final safeHistory = sanitizeHistory(history);
+    String render(String historyText, String _) => '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
-$history
-The user just asked: "$query"
+$historyText
+The user just asked: "$safeQuery"
 
 However, no health records were found in the local database or Medplum server for this specific request.
 
@@ -144,23 +208,45 @@ Instructions:
 <end_of_turn>
 <start_of_turn>model
 ''';
+    return _fitToBudget(
+      render: render,
+      history: safeHistory,
+      recordLines: const [],
+      budget: budget,
+    );
   }
 
-  String _buildRawDataResponsePrompt(String query, Map<String, dynamic> rawData, [List<String>? contextChunks]) {
-    final history = _formatHistory();
-    // Truncate raw data if too large for prompt
-    final rawJson = jsonEncode(rawData);
-    final dataSubset = rawJson.length > 4000 ? rawJson.substring(0, 4000) : rawJson;
+  String _buildNoDataResponsePrompt(String query) => buildNoDataResponsePrompt(
+        query,
+        history: _conversationHistory,
+        budget: _promptBudget,
+      );
 
-    return '''<start_of_turn>user
+  /// Pure builder for the raw-data prompt. Passes a single record line
+  /// containing the JSON-encoded raw data; budget overflow drops the entire
+  /// block (leaving the model to explain there was too much to show),
+  /// rather than mid-JSON clipping.
+  @visibleForTesting
+  static String buildRawDataResponsePrompt(
+    String query,
+    Map<String, dynamic> rawData, {
+    List<Map<String, String>> history = const [],
+    required int budget,
+  }) {
+    final safeQuery = sanitizeForPrompt(query);
+    final safeHistory = sanitizeHistory(history);
+    final rawJson = jsonEncode(rawData);
+
+    String render(String historyText, String recordsText) =>
+        '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
-$history
-The user just asked: "$query"
+$historyText
+The user just asked: "$safeQuery"
 
 Here is the RAW FHIR EHR data from the server. It may contain technical metadata (like "method", "path", "jsonrpc") which you should IGNORE. Focus ONLY on the clinical records found in the "response" or "entry" fields.
 
 Data:
-$dataSubset
+$recordsText
 
 Instructions:
 1. Summarize the actual clinical information (vaccines, visits, test results) clearly for the patient.
@@ -170,7 +256,25 @@ Instructions:
 <end_of_turn>
 <start_of_turn>model
 ''';
+
+    return _fitToBudget(
+      render: render,
+      history: safeHistory,
+      recordLines: [rawJson],
+      budget: budget,
+    );
   }
+
+  String _buildRawDataResponsePrompt(
+    String query,
+    Map<String, dynamic> rawData,
+  ) =>
+      buildRawDataResponsePrompt(
+        query,
+        rawData,
+        history: _conversationHistory,
+        budget: _promptBudget,
+      );
 
   static bool _isListIntent(String query) {
     final q = query.toLowerCase();
@@ -184,9 +288,19 @@ Instructions:
         q.contains('records');
   }
 
-  String _buildResponsePrompt(String query, List<Map<String, dynamic>> summary, [List<String>? contextChunks]) {
-    final history = _formatHistory();
-    final recordsText = summary.map((s) => jsonEncode(s)).join('\n');
+  /// Pure builder for the summarized-records prompt.
+  @visibleForTesting
+  static String buildResponsePrompt(
+    String query,
+    List<Map<String, dynamic>> summary, {
+    List<Map<String, String>> history = const [],
+    required int budget,
+  }) {
+    // Sanitize the raw query once; preserve the original for intent
+    // detection (isList / glucose hint) so an injected control marker
+    // can't change downstream branching.
+    final safeQuery = sanitizeForPrompt(query);
+    final safeHistory = sanitizeHistory(history);
     final q = query.toLowerCase();
     final isList = _isListIntent(query);
 
@@ -198,14 +312,16 @@ Instructions:
         ? '\n- The user asked about glucose or CGM: list blood glucose and HbA1c-related entries only; ignore step counts or unrelated vitals unless none exist.'
         : '';
 
-    final instructions = isList ? '''Instructions:
+    final instructions = isList
+        ? '''Instructions:
 1. Format EACH record as its own separate bullet point. Do not collapse multiple records into one sentence.
    - Pattern: "- **[Name/Vaccine/Test]** — [Date] — [Value or Status]"
    - Example: "- **Influenza vaccine** — 2016-08-17 — Completed (preservative-free)"
 2. List every record individually; do not group or summarize across records.
 3. If there is only one record, still use the bullet format and note it is the only one on file.
 4. Use a professional and supportive medical tone.
-5. Do not mention being an AI.$glucoseHint''' : '''Instructions:
+5. Do not mention being an AI.$glucoseHint'''
+        : '''Instructions:
 1. Summarize ONLY the records provided above.
 2. If the records are Immunizations, focus on vaccines and dates.
 3. If the records are Observations, focus on lab values and vitals.
@@ -215,10 +331,13 @@ Instructions:
 7. Use a professional and supportive medical tone.
 8. Be concise and do not mention being an AI.$glucoseHint''';
 
-    return '''<start_of_turn>user
+    final recordLines = summary.map((s) => jsonEncode(s)).toList();
+
+    String render(String historyText, String recordsText) =>
+        '''<start_of_turn>user
 You are MyWellWallet, a specialized medical AI assistant.
-$history
-The user just asked: "$query"
+$historyText
+The user just asked: "$safeQuery"
 
 Here are the specific EHR records retrieved for this request (may include Apple Health–synced Observations tagged in source data):
 $recordsText
@@ -227,7 +346,25 @@ $instructions
 <end_of_turn>
 <start_of_turn>model
 ''';
+
+    return _fitToBudget(
+      render: render,
+      history: safeHistory,
+      recordLines: recordLines,
+      budget: budget,
+    );
   }
+
+  String _buildResponsePrompt(
+    String query,
+    List<Map<String, dynamic>> summary,
+  ) =>
+      buildResponsePrompt(
+        query,
+        summary,
+        history: _conversationHistory,
+        budget: _promptBudget,
+      );
 
   void clearContext() {
     _conversationHistory.clear();
@@ -412,7 +549,8 @@ $instructions
     }
   }
 
-  String _formatSummaryAsMarkdown(List<Map<String, dynamic>> summary) {
+  @visibleForTesting
+  static String formatSummaryAsMarkdown(List<Map<String, dynamic>> summary) {
     final buffer = StringBuffer();
     for (var item in summary) {
       final type = item['Type'] ?? 'Record';
@@ -426,6 +564,73 @@ $instructions
       buffer.writeln();
     }
     return buffer.toString();
+  }
+
+  String _formatSummaryAsMarkdown(List<Map<String, dynamic>> summary) =>
+      formatSummaryAsMarkdown(summary);
+
+  /// Consume [tokens], apply [timeout] with a clean close on fire, and
+  /// shape the output so callers always see one of three coherent endings:
+  ///   1. Normal completion: yield each token verbatim and record the
+  ///      trimmed full text via [recordModelTurn].
+  ///   2. Timeout after tokens arrived: yield the tokens AND a trailing
+  ///      [truncationNotice] so the user knows the response was cut. The
+  ///      notice is NOT included in the recorded model turn.
+  ///   3. Zero tokens (whether the stream ended cleanly or timed out):
+  ///      skip [recordModelTurn] and yield a structured markdown summary
+  ///      of [summary], or [noRecordsMessage] if [summary] is empty.
+  ///
+  /// Factored out of [generateStreamingResponse] so tests can exercise
+  /// it with a scripted stream and a short timeout without needing a
+  /// real MedGemma instance (WP1-12).
+  @visibleForTesting
+  static Stream<String> applyTimeoutAndFallback({
+    required Stream<String> tokens,
+    required Duration timeout,
+    required List<Map<String, dynamic>> summary,
+    required String noRecordsMessage,
+    required void Function(String fullResponse) recordModelTurn,
+  }) async* {
+    var receivedTokens = false;
+    var timedOut = false;
+    final full = StringBuffer();
+
+    final timed = tokens.timeout(
+      timeout,
+      onTimeout: (sink) {
+        timedOut = true;
+        LogService.log('GemmaService: stream timed out after ${timeout.inMilliseconds}ms');
+        sink.close();
+      },
+    );
+
+    await for (final token in timed) {
+      receivedTokens = true;
+      full.write(token);
+      yield token;
+    }
+
+    if (receivedTokens) {
+      recordModelTurn(full.toString().trim());
+      if (timedOut) {
+        LogService.log(
+          'GemmaService: stream timed out mid-response '
+          '(${full.length} chars received); appending truncation notice',
+        );
+        yield truncationNotice;
+      }
+    } else {
+      LogService.log(
+        timedOut
+            ? 'GemmaService: stream timed out with zero tokens; falling back'
+            : 'GemmaService: stream ended with zero tokens; falling back',
+      );
+      if (summary.isNotEmpty) {
+        yield formatSummaryAsMarkdown(summary);
+      } else {
+        yield noRecordsMessage;
+      }
+    }
   }
 
   String _formatDateString(dynamic date) {

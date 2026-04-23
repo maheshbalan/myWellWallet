@@ -8,14 +8,16 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
 import '../models/patient.dart';
 import '../providers/query_provider.dart';
+import '../providers/query_concurrency.dart';
 import '../providers/auth_provider.dart';
 import '../providers/patient_provider.dart';
-import '../services/gemma_service.dart';
 import '../services/gemma_model_service.dart';
 import '../services/log_service.dart';
 import '../widgets/conversation_message.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/app_bar_logo.dart';
+import '../widgets/typing_indicator_helpers.dart';
+import '../widgets/follow_up_prompts.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,10 +30,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final _queryController = TextEditingController();
   final _scrollController = ScrollController();
   final stt.SpeechToText _speech = stt.SpeechToText();
-  final GemmaService _gemmaService = GemmaService();
+  // NOTE: the canonical GemmaService lives on QueryProvider
+  // (context.read<QueryProvider>().gemmaService). HomeScreen used to
+  // construct a second instance here, which meant conversation history
+  // diverged between the two — WP1-09 removed that.
 
   bool _isListening = false;
   bool _speechAvailable = false;
+  bool _isStreaming = false;
   final List<Map<String, dynamic>> _messages = [];
   List<String> _followUpPrompts = [];
   late AnimationController _micAnimationController;
@@ -373,8 +379,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Future<void> _processQuery() async {
     final query = _queryController.text.trim();
-    if (query.isEmpty) return;
+    final queryProvider = context.read<QueryProvider>();
+    if (!shouldAcceptNewQuery(
+      isStreaming: _isStreaming,
+      isProcessing: queryProvider.isProcessing,
+      query: query,
+    )) {
+      LogService.log(
+        'HomeScreen._processQuery: rejecting concurrent/empty submit '
+        '(isStreaming=$_isStreaming, isProcessing=${queryProvider.isProcessing})',
+      );
+      return;
+    }
 
+    setState(() => _isStreaming = true);
+    try {
+      await _runQuery(query, queryProvider);
+    } finally {
+      if (mounted) {
+        setState(() => _isStreaming = false);
+      } else {
+        _isStreaming = false;
+      }
+    }
+  }
+
+  Future<void> _runQuery(String query, QueryProvider queryProvider) async {
     // Add user message (no auto-scroll: question stays visible; user scrolls or uses down arrow)
     setState(() {
       _messages.add({
@@ -386,22 +416,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _followUpPrompts = [];
     });
 
-    // Add typing indicator
+    // Add typing indicator (tagged so removal is identity-based, not positional)
     setState(() {
-      _messages.add({
-        'isUser': false,
-        'message': 'typing',
-        'timestamp': DateTime.now(),
-      });
+      _messages.add(buildTypingIndicator());
     });
 
     try {
-      final queryProvider = context.read<QueryProvider>();
       await queryProvider.processQuery(query);
 
-      // Remove typing indicator
+      // Remove typing indicator by tag; tolerates any interleaving mutation
       setState(() {
-        _messages.removeLast();
+        removeTypingIndicator(_messages);
       });
 
       if (queryProvider.error != null) {
@@ -420,11 +445,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         if (result['markdown'] != null) {
           final response = result['markdown'] as String;
           _addAssistantMessage(response, isMarkdown: true);
-          // Sync conversation history so both services are aware of this exchange.
-          // GemmaRAGService already has the user query (added in processQuery),
-          // so we only need to add the assistant response there.
-          _gemmaService.addToHistory('user', query);
-          _gemmaService.addToHistory('model', response);
+          // Markdown branch doesn't invoke generateStreamingResponse, so
+          // record both sides of the exchange on the shared GemmaService
+          // here. (Streaming branches below let generateStreamingResponse
+          // record them internally.)
+          queryProvider.gemmaService.addToHistory('user', query);
+          queryProvider.gemmaService.addToHistory('model', response);
           queryProvider.addAssistantResponseToHistory(response);
         } else if (result['result'] != null || result['resources'] != null) {
           // Generate response using Gemma service WITH STREAMING
@@ -446,7 +472,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           final int lastIndex = _messages.length - 1;
           String fullResponse = '';
           
-          await for (final token in _gemmaService.generateStreamingResponse(query, fhirData)) {
+          await for (final token in queryProvider.gemmaService.generateStreamingResponse(query, fhirData)) {
             fullResponse += token;
             if (mounted && _messages.length > lastIndex) {
               setState(() {
@@ -476,7 +502,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           final int lastIndex = _messages.length - 1;
           String fullResponse = '';
 
-          await for (final token in _gemmaService.generateStreamingResponse(query, {})) {
+          await for (final token in queryProvider.gemmaService.generateStreamingResponse(query, {})) {
             fullResponse += token;
             if (mounted && _messages.length > lastIndex) {
               setState(() {
@@ -498,9 +524,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (e) {
       LogService.log('HomeScreen error: $e');
       setState(() {
-        if (_messages.isNotEmpty && _messages.last['message'] == 'typing') {
-          _messages.removeLast();
-        }
+        removeTypingIndicator(_messages);
         _messages.add({
           'isUser': false,
           'message': 'Sorry, I encountered an error processing your request: $e',
@@ -523,19 +547,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   void _updateFollowUpPrompts(String query) {
     setState(() {
-      if (query.toLowerCase().contains('visit') || query.toLowerCase().contains('encounter')) {
-        _followUpPrompts = ['Show me my immunization record', 'Show me my Test Results'];
-      } else if (query.toLowerCase().contains('immunization') || query.toLowerCase().contains('vaccine')) {
-        _followUpPrompts = ['Show me my recent visits', 'Show me my Test Results'];
-      } else if (query.toLowerCase().contains('test') || query.toLowerCase().contains('result') || query.toLowerCase().contains('diagnostic')) {
-        _followUpPrompts = ['Show me my recent visits', 'Show me my immunization record'];
-      } else {
-        _followUpPrompts = [
-          'Show me my recent visits',
-          'Show me my immunization record',
-          'Show me my Test Results',
-        ];
-      }
+      _followUpPrompts = followUpPromptsFor(query);
     });
   }
 
@@ -572,7 +584,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _messages.clear();
       _addWelcomeMessage();
       _queryController.clear();
-      _gemmaService.clearContext();
+      // clearResults() on QueryProvider now clears the canonical GemmaService
+      // and the GemmaRAGService in one call (both are owned by the provider),
+      // so there's no second instance to reset here.
       context.read<QueryProvider>().clearResults();
     });
   }
@@ -592,6 +606,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isProcessing = context.watch<QueryProvider>().isProcessing;
+    final inputLocked =
+        isInputLocked(isStreaming: _isStreaming, isProcessing: isProcessing);
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
@@ -689,7 +706,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
                       final message = _messages[index];
-                      if (message['message'] == 'typing') {
+                      if (isTypingIndicator(message)) {
                         return const TypingIndicator();
                       }
                       return Padding(
@@ -777,7 +794,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           borderRadius: BorderRadius.circular(20),
                           elevation: 0,
                           child: InkWell(
-                            onTap: () => _handleFollowUpPrompt(prompt),
+                            onTap: inputLocked
+                                ? null
+                                : () => _handleFollowUpPrompt(prompt),
                             borderRadius: BorderRadius.circular(20),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -867,7 +886,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               maxLines: 1,
                               textCapitalization: TextCapitalization.sentences,
                               onSubmitted: (_) => _processQuery(),
-                              enabled: !_isListening,
+                              enabled: !_isListening && !inputLocked,
                             ),
                           ),
                           // Microphone button
@@ -896,7 +915,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 color: Colors.white,
                                 size: 26,
                               ),
-                              onPressed: _toggleListening,
+                              onPressed: inputLocked ? null : _toggleListening,
                               tooltip: _isListening
                                   ? 'Stop'
                                   : 'Voice input',
@@ -928,7 +947,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         color: Colors.white,
                         size: 24,
                       ),
-                      onPressed: _processQuery,
+                      onPressed: inputLocked ? null : _processQuery,
                       tooltip: 'Send',
                     ),
                   ),

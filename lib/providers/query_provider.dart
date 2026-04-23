@@ -4,9 +4,11 @@ import '../services/nlp_service.dart';
 import '../services/gemma_service.dart';
 import '../services/local_query_service.dart';
 import '../services/gemma_rag_service.dart';
+import '../services/data_sync_service.dart';
 import '../services/log_service.dart';
 import 'auth_provider.dart';
 import 'patient_provider.dart';
+import 'query_concurrency.dart';
 
 class QueryProvider with ChangeNotifier {
   final MCPClient mcpClient;
@@ -53,7 +55,16 @@ class QueryProvider with ChangeNotifier {
 
   /// Process a natural language query with local-first approach
   Future<void> processQuery(String query) async {
-    if (query.trim().isEmpty) return;
+    if (!shouldAcceptNewQuery(
+      isStreaming: false, // streaming lives in the UI layer
+      isProcessing: _isProcessing,
+      query: query,
+    )) {
+      LogService.log(
+        'QueryProvider: Rejecting concurrent/empty query (isProcessing=$_isProcessing)',
+      );
+      return;
+    }
     LogService.log('QueryProvider: Processing query: "$query"');
 
     _isProcessing = true;
@@ -199,25 +210,12 @@ class QueryProvider with ChangeNotifier {
         throw Exception('Cannot fallback to MCP: No resourceType in query plan');
       }
 
-      // 1. Determine correct tool name
-      String toolName;
-      final knownTools = [
-        'Patient', 'Observation', 'Condition', 'AllergyIntolerance', 
-        'Encounter', 'Immunization', 'Medication', 'DocumentReference', 
-        'FamilyMemberHistory'
-      ];
-      
-      if (knownTools.contains(resourceType)) {
-        toolName = 'request_${resourceType.toLowerCase()}_resource';
-      } else {
-        toolName = 'request_generic_resource';
-      }
+      // 1. Determine correct tool name (shared with DataSyncService so naming
+      // stays consistent across the sync path and the chat-fallback path).
+      final toolName = DataSyncService.toolFor(resourceType);
 
-      // 2. Determine correct filter name (subject vs patient)
-      final usePatientFilter = [
-        'Immunization', 'MedicationStatement', 'Condition', 'AllergyIntolerance'
-      ].contains(resourceType);
-      final filterName = usePatientFilter ? 'patient' : 'subject';
+      // 2. Determine correct search parameter name (subject vs patient).
+      final filterName = DataSyncService.searchParamFor(resourceType);
 
       // 3. Build path with filters
       final filters = queryPlan?['filters'] as Map<String, dynamic>?;

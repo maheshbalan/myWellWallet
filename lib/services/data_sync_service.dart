@@ -30,6 +30,61 @@ class DataSyncService {
     'FamilyMemberHistory',
   ];
 
+  // FHIR-spec-correct search parameter name for each resource type.
+  // MedicationStatement / Condition / AllergyIntolerance / Immunization /
+  // FamilyMemberHistory use `patient=`; Observation / Encounter /
+  // DiagnosticReport / DocumentReference use `subject=`.
+  static const Map<String, String> _searchParamByResourceType = {
+    'Encounter': 'subject',
+    'Observation': 'subject',
+    'MedicationStatement': 'patient',
+    'Condition': 'patient',
+    'AllergyIntolerance': 'patient',
+    'Immunization': 'patient',
+    'DiagnosticReport': 'subject',
+    'DocumentReference': 'subject',
+    'FamilyMemberHistory': 'patient',
+  };
+
+  // MCP tool name for each resource type. DiagnosticReport has no dedicated
+  // tool on the server (see docs/FHIR_MCP_SERVER_README.md) so it routes to
+  // the generic resource tool.
+  static const Map<String, String> _toolByResourceType = {
+    'Patient': 'request_patient_resource',
+    'Encounter': 'request_encounter_resource',
+    'Observation': 'request_observation_resource',
+    'MedicationStatement': 'request_medication_resource',
+    'Condition': 'request_condition_resource',
+    'AllergyIntolerance': 'request_allergy_intolerance_resource',
+    'Immunization': 'request_immunization_resource',
+    'DiagnosticReport': 'request_generic_resource',
+    'DocumentReference': 'request_document_reference_resource',
+    'FamilyMemberHistory': 'request_family_member_history_resource',
+  };
+
+  /// FHIR search parameter name (`patient` or `subject`) for the given
+  /// resource type. Returns [orElse] (default `subject`) for unknown types;
+  /// pass `orElse: null` to throw instead.
+  static String searchParamFor(String resourceType, {String? orElse = 'subject'}) {
+    final param = _searchParamByResourceType[resourceType];
+    if (param != null) return param;
+    if (orElse != null) return orElse;
+    throw ArgumentError('Unknown resource type: $resourceType');
+  }
+
+  /// FHIR search path for the given resource type and patient. Throws for
+  /// resource types not in the known-types list.
+  static String pathFor(String resourceType, String patientId,
+      {int count = 1000}) {
+    final param = searchParamFor(resourceType, orElse: null);
+    return '/$resourceType?$param=Patient/$patientId&_count=$count';
+  }
+
+  /// MCP tool name for the given resource type; falls back to the generic
+  /// resource tool if no dedicated tool is registered.
+  static String toolFor(String resourceType) =>
+      _toolByResourceType[resourceType] ?? 'request_generic_resource';
+
   DataSyncService({
     required this.mcpClient,
     required this.databaseService,
@@ -153,24 +208,7 @@ class DataSyncService {
     String resourceType,
     Map<String, FetchStatus> statuses,
   ) async {
-    // Map resource types to FHIR search paths
-    final pathMap = {
-      'Encounter': '/Encounter?subject=Patient/$patientId&_count=1000',
-      'Observation': '/Observation?subject=Patient/$patientId&_count=1000',
-      'MedicationStatement': '/MedicationStatement?subject=Patient/$patientId&_count=1000',
-      'Condition': '/Condition?subject=Patient/$patientId&_count=1000',
-      'AllergyIntolerance': '/AllergyIntolerance?patient=Patient/$patientId&_count=1000',
-      'Immunization': '/Immunization?patient=Patient/$patientId&_count=1000',
-      'DiagnosticReport': '/DiagnosticReport?subject=Patient/$patientId&_count=1000',
-      'DocumentReference': '/DocumentReference?subject=Patient/$patientId&_count=1000',
-      'FamilyMemberHistory': '/FamilyMemberHistory?patient=Patient/$patientId&_count=1000',
-    };
-
-    final path = pathMap[resourceType];
-    if (path == null) {
-      throw Exception('Unknown resource type: $resourceType');
-    }
-
+    final path = pathFor(resourceType, patientId);
     return await _fetchResource(patientId, resourceType, path, statuses);
   }
 
@@ -182,21 +220,7 @@ class DataSyncService {
     Map<String, FetchStatus> statuses,
   ) async {
     try {
-      // Determine the appropriate MCP tool based on resource type
-      final toolMap = {
-        'Patient': 'request_patient_resource',
-        'Encounter': 'request_encounter_resource',
-        'Observation': 'request_observation_resource',
-        'MedicationStatement': 'request_medication_resource',
-        'Condition': 'request_condition_resource',
-        'AllergyIntolerance': 'request_allergy_intolerance_resource',
-        'Immunization': 'request_immunization_resource',
-        'DiagnosticReport': 'request_document_reference_resource', // May need generic
-        'DocumentReference': 'request_document_reference_resource',
-        'FamilyMemberHistory': 'request_family_member_history_resource',
-      };
-
-      String tool = toolMap[resourceType] ?? 'request_generic_resource';
+      final tool = toolFor(resourceType);
 
       // Call MCP tool
       final result = await mcpClient.callTool(tool, {
