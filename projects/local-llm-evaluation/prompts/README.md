@@ -6,7 +6,7 @@ Store versioned **system prompts** for the Dify “Personal Health Companion” 
 
 | File | Use |
 |------|-----|
-| `text_to_sql_for_dify_COPY_PASTE.txt` | **Paste into Dify** as system prompt for **gpt-4o-mini** (etc.): NL→**one SELECT** with **JOIN**s for Dify **Database Query** (single-statement datasource). |
+| `text_to_sql_for_dify_COPY_PASTE.txt` | **Paste into Dify** as system prompt: plain **SQL only** starting with **`SELECT`** (no markdown/fences); **JOIN**s where needed for **Database Query**. |
 | `dify_text_to_sql_system_prompt.md` | Join-key table + Dify Database Query expectations (longer companion to the `.txt`). |
 
 ## Requirements (from proposal)
