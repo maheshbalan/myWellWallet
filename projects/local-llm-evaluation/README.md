@@ -22,7 +22,7 @@ This directory is the **home for the class project** that runs **next to** the m
 
 | Path | Purpose |
 |------|--------|
-| `docs/` | Proposal summary, evaluation criteria, Dify notes, responsible AI one-pager |
+| `docs/` | Proposal summary, evaluation criteria, **`CLOUD_SQL_DIFY_SETUP.md`** (copy of root `docs/CLOUD_SQL_DIFY_SETUP.md`), other notes |
 | `dify/` | Checklists and exports for the Dify evaluation testbed (workflows, KB naming) |
 | `data/` | **Metadata only in git** — where synthetic datasets and exports live; see `data/README.md` |
 | `eval/` | 100-question test set structure, rubrics, judge prompts |
