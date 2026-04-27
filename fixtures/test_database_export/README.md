@@ -10,7 +10,9 @@ It includes:
 
 The canonical schema description is kept in sync here as **`SQLITE_SCHEMA.md`** (copy of `docs/SQLITE_SCHEMA.md`).
 
-**Seed simulator/phone + Dify:** see **`docs/DATABASE_FIXTURE_TESTING_AND_DIFY.md`** (device seeding, Android, and Knowledge-base export via `scripts/export_sqlite_for_dify.py`).
+**Seed simulator/phone + Dify (files):** see **`docs/DATABASE_FIXTURE_TESTING_AND_DIFY.md`**.
+
+**Google Cloud SQL + Dify (hosted Postgres, migration from this SQLite, External Knowledge API):** see **`docs/CLOUD_SQL_DIFY_SETUP.md`**.
 
 ## Privacy and sharing
 

@@ -1,5 +1,9 @@
 # Fixture database: seed devices & use with Dify
 
+> To host the same data in **Google Cloud SQL** and wire **Dify** to it (migration from SQLite, `pgloader`, External Knowledge API), see **`CLOUD_SQL_DIFY_SETUP.md`**.
+
+---
+
 **Location of the SQLite fixture:** `fixtures/test_database_export/mywellwallet_phone.sqlite3`  
 **Schema reference:** `fixtures/test_database_export/SQLITE_SCHEMA.md` (mirror of `docs/SQLITE_SCHEMA.md`)  
 **Synthetic health seed (re-runnable):** `fixtures/test_database_export/apply_synthetic_health_seed.sql`
