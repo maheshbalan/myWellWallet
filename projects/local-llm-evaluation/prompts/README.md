@@ -2,6 +2,13 @@
 
 Store versioned **system prompts** for the Dify “Personal Health Companion” persona.
 
+## English → SQLite (for Dify + small LLM)
+
+| File | Use |
+|------|-----|
+| `text_to_sql_for_dify_COPY_PASTE.txt` | **Paste into Dify** as the full system prompt for **gpt-4o-mini** (or similar) for NL→SQL. Single block, no markdown wrapper. |
+| `dify_text_to_sql_system_prompt.md` | Same content with **documentation**, security notes, and Dify wiring tips. |
+
 ## Requirements (from proposal)
 
 - Diabetes-aware, **non-clinician** role  
