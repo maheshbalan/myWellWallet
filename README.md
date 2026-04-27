@@ -141,6 +141,14 @@ The idea is to pair **neural output** with **explicit clinical structure** on to
 
 ---
 
+## Multi–local-LLM evaluation (CGU IST 345)
+
+A separate **class project** (team: Mahesh Balan, Yashas Basavaraj Mahesh, Prajwal Vinod Naik, Brandon Medina) compares several **on-device** models (Gemma 3, Phi-3, MedGemma tiers) using **Dify** as the evaluation harness, focused on **Type 2 diabetes** scenarios and synthetic **FHIR + RWE** data. It does not replace the main app; it lives under:
+
+**`projects/local-llm-evaluation/`** — proposal summary, Dify checklists, eval test-set layout, model matrix, and results layout.
+
+---
+
 ## Contributing, license, author
 
 Pull requests welcome. Please run `flutter analyze` before you submit.

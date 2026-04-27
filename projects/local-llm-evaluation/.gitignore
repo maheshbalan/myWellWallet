@@ -1,0 +1,7 @@
+# Large or sensitive evaluation artifacts (uncomment or extend as needed)
+# *.csv
+# *.xlsx
+# *.jsonl
+# dist/
+# .env
+# *secret*
