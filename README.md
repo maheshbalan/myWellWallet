@@ -22,7 +22,13 @@ The phone stores **EHR-style FHIR** (from your MCP server) and **Apple Health** 
 
 ## Apple Health and the FHIR server
 
-**Apple Health (iOS).** The app reads HealthKit data such as glucose, heart rate, steps, blood pressure, and some lab-style rows when the OS provides them. Everything is written to local SQLite. See `docs/SQLITE_SCHEMA.md` and `docs/INTEGRATED_HEALTH_EHR_DESIGN.md` for tables and how EHR and Apple data fit together.
+**Apple Health (iOS).** The app reads HealthKit metrics (glucose, heart rate, steps, blood pressure) into SQLite. It also pulls **Clinical Health Records** FHIR payloads for institutional **lab results** (e.g. Sonora Quest, Quest Diagnostics hospitals on Apple Health Accounts) via a native iOS helper that queries `HKClinicalRecord` **`labResultRecord`** samples—not only the Dart `health` package. Labs are stored in `health_lab_results` (LOINC, value, units, reference range, source, draw time).
+
+**Labs in the UI.** **Health → Lab results** shows the **latest value per analyte** (grouped by LOINC when present). Tap a row for a clinician-style **history table** (up to twelve prior draws): date/time, result, reference range, in-range flag, Δ vs prior reading, source. Connect Apple Health under **Profile**, run **Sync now**, and approve **Clinical Records** lab access when iOS prompts.
+
+**iOS Info.plist.** In addition to `NSHealthShareUsageDescription` / `NSHealthUpdateUsageDescription`, **`NSHealthClinicalHealthRecordsShareUsageDescription`** must be present. HealthKit terminates the process if you request `HKClinicalType` lab-authorization without that key—it is wired in `ios/Runner/Info.plist`. Entitlements include **`health-records`**; native parsing lives in `ios/Runner/ClinicalHealthRecordsPlugin.swift`, bridged via `lib/services/clinical_lab_results_channel.dart`.
+
+See `docs/SQLITE_SCHEMA.md` and `docs/INTEGRATED_HEALTH_EHR_DESIGN.md` for tables and how EHR and Apple data fit together.
 
 **MCP and FHIR.** The app includes an **MCP (Model Context Protocol) client** that talks to an **MCP FHIR server** built for this project. The server exposes FHIR resources (`Patient`, `Observation`, bundles, etc.) as MCP tools. The client pulls data, stores it in SQLite (`fhir_patients`, `fhir_resources`, `fetch_summaries`), and feeds it into query and RAG code.
 
@@ -54,7 +60,7 @@ The phone stores **EHR-style FHIR** (from your MCP server) and **Apple Health** 
          │ MCP client                │ Health sync
          ▼                           ▼
 ┌─────────────────────────────────────────────────┐
-│ SQLite: fhir_* + health_* + users               │
+│ SQLite: users, fhir_*, health_* (incl. health_lab_results labs) │
 └────────────────────────┬────────────────────────┘
                          │ LocalQueryService / RAG
                          ▼
@@ -73,7 +79,7 @@ The phone stores **EHR-style FHIR** (from your MCP server) and **Apple Health** 
 |--------|--------|
 | MCP client, routing, state | `lib/main.dart`, `lib/services/mcp_client.dart`, `lib/providers/` |
 | MedGemma, download, memory limits | `lib/services/gemma_model_service.dart`, `docs/MEDGEMMA_AND_MEMORY_CAPS.md` |
-| Apple Health → SQLite | `lib/services/apple_health_service.dart`, `lib/services/database_service.dart` |
+| Apple Health → SQLite (vitals + clinical lab FHIR) | `lib/services/apple_health_service.dart`, `ios/Runner/ClinicalHealthRecordsPlugin.swift`, `lib/services/clinical_lab_results_channel.dart`, `lib/screens/health_lab_results_screen.dart`, `lib/screens/health_lab_detail_screen.dart`, `lib/services/database_service.dart` |
 | EHR + Apple design | `docs/INTEGRATED_HEALTH_EHR_DESIGN.md` |
 | Server URL and model URL | `lib/config/app_config.dart` |
 
@@ -92,9 +98,14 @@ flutter pub run flutter_launcher_icons
 flutter run
 ```
 
+**In-place installs (preserve data).** Updating the same app on the phone replaces **only the application bundle**—not the app’s **Documents / Library** sandbox—so your **SQLite database**, **registered `users` row**, **downloaded MedGemma weights**, and other local files stay intact, **as long as you do not delete** the app icon first and the **bundle identifier** stays `com.mywellwallet.mywellwallet`.
+
+- **Recommended:** `flutter run --release -d <device_id>` after `flutter devices` (or **Xcode → open `ios/Runner.xcworkspace` → select your iPhone → Run**). This installs a signed build over the existing app. Append **`--no-resident`** if you only want install/launch without keeping the tooling attached (`flutter run --release -d <device_id> --no-resident`).
+- **Avoid** `flutter install` for upgrades if you see it log **“Uninstalling old version…”**—that step can remove local data. If you only have the CLI, use `flutter run --release` instead of `flutter install`.
+
 **Physical iPhone.** Use `flutter run --release` when running with the native ML stack; see `docs/IOS_DEBUG_CRASH.md` if debug builds crash.
 
-**Apple Health.** See `docs/APPLE_HEALTH_SETUP.md` (HealthKit, Profile → Apple Health, sync interval).
+**Apple Health.** See `docs/APPLE_HEALTH_SETUP.md` (HealthKit, Profile → Apple Health, sync interval). Add participating providers under **Apple Health → Browse → Add Account** so Clinical lab records can sync before you open **Lab results**.
 
 **MCP base URL.** Edit `mcpBaseUrl` in `lib/config/app_config.dart`.
 

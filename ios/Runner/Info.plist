@@ -29,7 +29,9 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>MyWellWallet uses Face ID to securely sign you in.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>MyWellWallet reads your health data (glucose, heart rate, steps, blood pressure) to show you a diabetes and heart-health dashboard.</string>
+	<string>MyWellWallet reads glucose, heart rate, steps, blood pressure, and Clinical Health Records lab results (e.g. FHIR labs from hospitals and labs you connect in Apple Health) so you can view them in one place.</string>
+	<key>NSHealthClinicalHealthRecordsShareUsageDescription</key>
+	<string>MyWellWallet reads Clinical Health Records lab results from Apple Health (when you allow access) so lab history can appear in the app.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>MyWellWallet can save health data you enter into Apple Health.</string>
 	<key>NSMicrophoneUsageDescription</key>

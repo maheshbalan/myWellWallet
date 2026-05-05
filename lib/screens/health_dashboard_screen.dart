@@ -22,6 +22,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
   List<Map<String, dynamic>> _heartRate = [];
   List<Map<String, dynamic>> _steps = [];
   List<Map<String, dynamic>> _bloodPressure = [];
+  List<Map<String, dynamic>> _labLatest = [];
   bool _loading = true;
 
   @override
@@ -39,12 +40,14 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
       final h = await _db.getHealthHeartRate(user.id, limit: 1);
       final s = await _db.getHealthSteps(user.id, limit: 7);
       final b = await _db.getHealthBloodPressure(user.id, limit: 1);
+      final labs = await _db.getHealthLabLatestPerTest(user.id);
       if (mounted) {
         setState(() {
           _glucose = g;
           _heartRate = h;
           _steps = s;
           _bloodPressure = b;
+          _labLatest = labs;
           _loading = false;
         });
       }
@@ -151,8 +154,10 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
                     const SizedBox(height: 12),
                     _SummaryCard(
                       title: 'Blood test results',
-                      subtitle: 'Quest, Sonora Quest, labs',
-                      value: 'View results',
+                      subtitle: 'Sonora Quest, Quest Diagnostics, FHIR labs',
+                      value: _labLatest.isEmpty
+                          ? 'Connect & sync — Profile'
+                          : '${_labLatest.length} tests · ${_labLatest.first['name']}: ${_labPreviewValue(_labLatest.first)}',
                       icon: FontAwesomeIcons.vial,
                       iconBg: const Color(0xFFE8F5E9),
                       iconColor: const Color(0xFF2E7D32),
@@ -176,6 +181,19 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
     if (sys >= 140 || dias >= 90) return 'Elevated';
     if (sys <= 90 && dias <= 60) return 'Low';
     return 'Normal';
+  }
+
+  String _labPreviewValue(Map<String, dynamic> r) {
+    final numVal = r['value_numeric'];
+    final strVal = r['value_string'] as String?;
+    final unit = r['unit'] as String?;
+    if (numVal != null) {
+      final n = numVal as num;
+      final s = n.roundToDouble() == n ? '${n.toInt()}' : n.toStringAsFixed(1);
+      return unit != null && unit.isNotEmpty ? '$s $unit' : s;
+    }
+    if (strVal != null && strVal.isNotEmpty) return strVal;
+    return '—';
   }
 }
 

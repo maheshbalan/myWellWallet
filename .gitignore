@@ -1,5 +1,6 @@
 # Local crash dumps (do not commit)
 crash/
+.cursor_runner_crash_ips/
 
 # Generated Dify export artifacts (see scripts/export_sqlite_for_dify.py)
 fixtures/test_database_export/dify_export/

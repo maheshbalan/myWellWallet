@@ -192,7 +192,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(result.success
-                ? 'Synced: ${result.glucoseCount} glucose, ${result.heartRateCount} heart rate, ${result.stepsCount} steps, ${result.bloodPressureCount} blood pressure'
+                ? 'Synced: ${result.glucoseCount} glucose, ${result.heartRateCount} HR, ${result.stepsCount} steps, ${result.bloodPressureCount} BP, ${result.labResultsCount} lab rows'
                 : 'Sync failed: ${result.message}'),
           ),
         );

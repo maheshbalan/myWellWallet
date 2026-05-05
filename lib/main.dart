@@ -28,6 +28,7 @@ import 'screens/health_heart_rate_screen.dart';
 import 'screens/health_steps_screen.dart';
 import 'screens/health_blood_pressure_screen.dart';
 import 'screens/health_lab_results_screen.dart';
+import 'screens/health_lab_detail_screen.dart';
 import 'screens/log_viewer_screen.dart';
 import 'test/mcp_sse_test_screen.dart';
 import 'config/app_config.dart';
@@ -449,6 +450,21 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/health/lab-results',
       builder: (context, state) => const HealthLabResultsScreen(),
+    ),
+    GoRoute(
+      path: '/health/lab-results/detail',
+      builder: (context, state) {
+        final args = state.extra as HealthLabDetailArgs?;
+        if (args == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Lab trend')),
+            body: const Center(
+              child: Text('Open this screen from Health → Lab results.'),
+            ),
+          );
+        }
+        return HealthLabDetailScreen(args: args);
+      },
     ),
   ],
 );

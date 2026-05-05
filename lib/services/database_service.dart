@@ -732,6 +732,89 @@ class DatabaseService {
     }).toList();
   }
 
+  /// Grouping key for one logical analyte (LOINC preferred over display name).
+  static String labGroupingKey(Map<String, dynamic> row) {
+    final lc = row['loinc_code'] as String?;
+    final trim = lc?.trim();
+    if (trim != null && trim.isNotEmpty) return 'lc:$trim';
+    final n = (row['name'] as String?)?.trim().toLowerCase() ?? '';
+    return 'n:$n';
+  }
+
+  /// Latest row per analyte after scanning [maxScan] newest rows (newest-first order).
+  Future<List<Map<String, dynamic>>> getHealthLabLatestPerTest(
+    String userId, {
+    int maxScan = 2000,
+  }) async {
+    final all = await getHealthLabResults(userId, limit: maxScan);
+    final seen = <String>{};
+    final latest = <Map<String, dynamic>>[];
+    for (final r in all) {
+      final k = labGroupingKey(r);
+      if (seen.add(k)) latest.add(r);
+    }
+    latest.sort((a, b) =>
+        (b['recorded_at'] as DateTime).compareTo(a['recorded_at'] as DateTime));
+    return latest;
+  }
+
+  /// History for one test (last [limit] draws, newest first).
+  Future<List<Map<String, dynamic>>> getHealthLabHistoryForTest(
+    String userId, {
+    required String testName,
+    String? loincCode,
+    int limit = 20,
+  }) async {
+    final db = await database;
+    List<Map<String, dynamic>> maps;
+    final trimmedLoinc = loincCode?.trim();
+    if (trimmedLoinc != null && trimmedLoinc.isNotEmpty) {
+      maps = await db.query(
+        'health_lab_results',
+        columns: null,
+        where: 'user_id = ? AND loinc_code = ?',
+        whereArgs: [userId, trimmedLoinc],
+        orderBy: 'recorded_at DESC',
+        limit: limit,
+      );
+    } else {
+      maps = await db.query(
+        'health_lab_results',
+        columns: null,
+        where: 'user_id = ? AND name = ?',
+        whereArgs: [userId, testName],
+        orderBy: 'recorded_at DESC',
+        limit: limit,
+      );
+    }
+    return maps.map((m) => {
+      'id': m['id'],
+      'name': m['name'] as String,
+      'loinc_code': m['loinc_code'] as String?,
+      'value_numeric': m['value_numeric'] != null ? (m['value_numeric'] as num).toDouble() : null,
+      'value_string': m['value_string'] as String?,
+      'unit': m['unit'] as String?,
+      'reference_range_low': m['reference_range_low'] != null ? (m['reference_range_low'] as num).toDouble() : null,
+      'reference_range_high': m['reference_range_high'] != null ? (m['reference_range_high'] as num).toDouble() : null,
+      'reference_range_text': m['reference_range_text'] as String?,
+      'source_name': m['source_name'] as String?,
+      'source_bundle_id': m['source_bundle_id'] as String?,
+      'specimen_type': m['specimen_type'] as String?,
+      'recorded_at': DateTime.parse(m['recorded_at'] as String),
+    }).toList();
+  }
+
+  /// Count rows per logical analyte (for badges like “4 readings”).
+  Future<Map<String, int>> getHealthLabCountsByGroup(String userId, {int maxScan = 4000}) async {
+    final all = await getHealthLabResults(userId, limit: maxScan);
+    final m = <String, int>{};
+    for (final r in all) {
+      final k = labGroupingKey(r);
+      m[k] = (m[k] ?? 0) + 1;
+    }
+    return m;
+  }
+
   /// Insert lab / blood test results (e.g. from Apple Health or FHIR Observation)
   Future<void> insertHealthLabResults(String userId, List<Map<String, dynamic>> results) async {
     final db = await database;

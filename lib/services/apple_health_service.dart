@@ -1,19 +1,21 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:health/health.dart';
+import 'clinical_lab_results_channel.dart';
 import 'database_service.dart';
 
 /// Apple Health (HealthKit) integration for iOS.
-/// Fetches CGM, heart rate, steps, and blood pressure for diabetes & heart-centric dashboard.
-/// Blood test / lab results (e.g. Quest, Sonora Quest) are stored in [health_lab_results].
-/// When HealthKit Clinical Records (labResultRecord) is supported by the plugin or a platform
-/// channel, request that type and insert into health_lab_results via [DatabaseService.insertHealthLabResults].
+/// Fetches CGM, heart rate, steps, blood pressure, and Clinical Records lab FHIR payloads
+/// into [health_lab_results] (Sonora Quest, Quest Diagnostics, hospitals, via Apple Health Records).
 class AppleHealthService {
   AppleHealthService({DatabaseService? databaseService})
       : _db = databaseService ?? DatabaseService();
 
   final DatabaseService _db;
   static final Health _health = Health();
+
+  /// Separate HealthKit permission sheets; overlapping dialogs can SIGABRT on some iOS versions.
+  static const Duration _clinicalAuthSpacing = Duration(milliseconds: 600);
 
   /// Types we read (diabetes & heart relevant)
   static List<HealthDataType> get _dataTypes => [
@@ -97,6 +99,8 @@ class AppleHealthService {
     // Fetch last 90 days for initial/sync
     final start = now.subtract(const Duration(days: 90));
 
+    _health.configure();
+
     try {
       final points = await _health.getHealthDataFromTypes(
         types: _dataTypes,
@@ -175,15 +179,32 @@ class AppleHealthService {
       await _db.insertHealthHeartRate(userId, heartRate);
       await _db.insertHealthSteps(userId, steps);
       await _db.insertHealthBloodPressure(userId, bloodPressure);
+
+      var labRows = 0;
+      try {
+        if (await ClinicalLabResultsChannel.isHealthRecordsAvailable()) {
+          await Future<void>.delayed(_clinicalAuthSpacing);
+          await ClinicalLabResultsChannel.requestAuthorization();
+          final labs = await ClinicalLabResultsChannel.syncLabResults(days: 730);
+          labRows = labs.length;
+          if (labs.isNotEmpty) {
+            await _db.insertHealthLabResults(userId, labs);
+          }
+        }
+      } catch (e, st) {
+        debugPrint('Clinical lab sync skipped: $e\n$st');
+      }
+
       await _db.updateHealthLastSynced(userId);
 
       return SyncResult(
-      success: true,
-      glucoseCount: glucose.length,
-      heartRateCount: heartRate.length,
-      stepsCount: steps.length,
-      bloodPressureCount: bloodPressure.length,
-    );
+        success: true,
+        glucoseCount: glucose.length,
+        heartRateCount: heartRate.length,
+        stepsCount: steps.length,
+        bloodPressureCount: bloodPressure.length,
+        labResultsCount: labRows,
+      );
     } catch (e, st) {
       debugPrint('AppleHealth sync error: $e');
       debugPrint('$st');
@@ -244,6 +265,7 @@ class SyncResult {
     this.heartRateCount = 0,
     this.stepsCount = 0,
     this.bloodPressureCount = 0,
+    this.labResultsCount = 0,
   });
   final bool success;
   final String? message;
@@ -251,4 +273,5 @@ class SyncResult {
   final int heartRateCount;
   final int stepsCount;
   final int bloodPressureCount;
+  final int labResultsCount;
 }
