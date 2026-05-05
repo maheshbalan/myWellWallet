@@ -1,6 +1,6 @@
 # MyWellWallet v1.4.0 — Release notes
 
-**Release date:** April 8, 2026  
+**Release date:** May 5, 2026  
 **Version:** 1.4.0 (build 2)  
 **Git tag:** `v1.4.0` (use this tag for the GitHub Release)
 
