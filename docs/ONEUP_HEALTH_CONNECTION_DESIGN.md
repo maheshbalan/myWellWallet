@@ -6,6 +6,8 @@ The call sequence, registered redirect URL, and iOS callback setup are in [ONEUP
 
 Apple Health stays as it is. Clinical records come from either the FHIR MCP server or 1up Patient Access. A Profile toggle picks one. The MCP client stays in the app. When production 1up is turned on, the toggle is locked to 1up and is no longer shown.
 
+Inside 1up mode the member can add more than one health plan or clinic. Each one has its own consent, its own token, and its own downloaded record. People with a chronic disease usually have several of these, so **Add a provider** is part of the design, not a later extra.
+
 ## 1. What we are connecting to
 
 MyWellWallet is a patient wallet. The matching 1up product is **Patient Access**: a member authorizes the app, and the app reads that one member’s FHIR R4 data.
@@ -37,7 +39,7 @@ Apple Health and 1up answer different questions. They stay separate until a quer
 | Where it lands | `health_*` tables, keyed by `users.id` | `fhir_patients` and `fhir_resources`, keyed by the FHIR Patient id |
 | Provenance tag | `apple-health` | `1up-patient-access` |
 
-The existing merge in `docs/INTEGRATED_HEALTH_EHR_DESIGN.md` still applies. Apple Health is always on. The clinical side is whichever source the toggle has selected. MCP rows keep the `ehr-fhir` tag. 1up rows use `1up-patient-access`. A query reads Apple Health plus the active clinical tag, not both clinical tags at once.
+The existing merge in `docs/INTEGRATED_HEALTH_EHR_DESIGN.md` still applies. Apple Health is always on. The clinical side is whichever source the toggle has selected. MCP rows keep the `ehr-fhir` tag. Each 1up connection uses `1up-patient-access` plus that connection’s id. A query reads Apple Health plus every connected 1up provider when the toggle is 1up, or the MCP rows when the toggle is MCP. It does not mix MCP rows and 1up rows in one answer.
 
 ```
 ┌──────────────────────────┐
@@ -138,13 +140,33 @@ Redirect URL registered in the Dev Portal must match exactly, including the sche
 
 The authorization `code` is single-use and lasts five minutes. Exchange it immediately. Do not log the code, the access token, or the client secret.
 
-1up’s published Patient Access example uses `grant_type=authorization_code` and does not document a refresh URL. Store `expires_in` when the token response includes it. When the token is missing or expired, Profile shows **Reconnect** and the member runs the auth app again. Do not invent a refresh call.
+1up’s published demo example uses `grant_type=authorization_code`. The JSON may also include `refresh_token` and `expires_in`. Section 6 is the refresh strategy. We do not call a refresh URL that the first token response did not give us a `refresh_token` for.
 
 ### Where the client secret lives
 
-1up’s token request requires `client_secret`. A secret compiled into the iPhone app can be extracted. For the sandbox spike, the secret stays in a local config file that is gitignored, the same way other developer keys are kept off GitHub. Before any production client exists, the token exchange moves to a small backend the phone calls, and the secret never ships in the app. The phone still holds only the member’s access token, in the Keychain, not in SQLite.
+1up’s token request requires `client_secret`. A secret compiled into the iPhone app can be extracted. For the sandbox spike, the secret stays in a local config file that is gitignored, the same way other developer keys are kept off GitHub. Before any production client exists, the token exchange moves to a small backend the phone calls, and the secret never ships in the app. The phone still holds only that connection’s access token and refresh token, in the Keychain, not in SQLite.
 
-## 5. MCP server and 1up are a toggle
+## 5. Add a provider, and more than one of them
+
+**Add a provider** is on the Health plan card whenever the clinical-records toggle is 1up. The member types part of a name. They pick one result. That opens only that provider’s 1up sign-in. Finishing it adds a connection. It does not replace connections they already have.
+
+What “provider” means here:
+
+- A **health plan** (the Patient Access case). In production the member chooses a plan that 1up has enabled for our app. Each plan has its own sign-in page. Our app filters the enabled plan list as they type. 1up’s Patient Access guide tells the app to offer that choice. It does not publish a typeahead API for plan names, so the partial match is done on the list we already have.
+- A **clinic or health system**. 1up’s Provider Search does accept a partial name. `GET /connect/system/provider?query=` searches doctor, clinic, hospital, or address and returns the health-system id used to open that system’s authorization. That endpoint belongs to the Connect API. 1up is sunsetting the Patient Connect product that shipped it, on September 30, 2026. We will ask 1up whether Provider Search still works for a Patient Access app before the typeahead calls it. Until they say yes, **Add a provider** in the sandbox offers one row only: the demo health plan. The search box can sit in the UI and filter that single row. It does not call Provider Search yet.
+
+Each connection stores its own access token and, when 1up sends one, its own refresh token. A single token is only the member who just consented at that one plan or system. 1up describes this as one member at a time. Several providers means several tokens, not one token that sees every chart.
+
+Refreshing one connection re-downloads that connection’s FHIR. It does not drop the others. Disconnect removes that connection’s token and its tagged rows.
+
+## 6. How a connection stays current
+
+Two different refreshes:
+
+- **Token.** If the token response includes `refresh_token`, we store it and exchange it for a new access token before it expires, and again if a download returns 401. 1up’s Connect API FAQ says the access token, the refresh token, and the authorization code each last 7200 seconds, that each access token comes with only one refresh token, and that a new pair can be requested before that window ends. Their third-party app policy also says a Patient Access app can be issued a refresh token. The published demo token example only tells us to read `access_token`. The first sandbox login will show whether `refresh_token` is actually in that JSON. If it is absent, or the refresh call is rejected, that connection asks the member to approve again. Other connections stay as they are.
+- **Data.** **Refresh** on a connection downloads FHIR again. When the app comes to the foreground, any connection last synced longer ago than its interval (default 24 hours, same choices as Apple Health) does a token refresh and then a download. iOS may not run this while the app is suspended, so we do not promise an overnight sync.
+
+## 7. MCP server and 1up are a toggle
 
 The MCP FHIR gateway stays. It is the clinical source we already have, and it may become the main way the wallet talks to provider systems later. 1up is the other clinical source, used for health-plan records. The member uses one of them at a time. Apple Health is not on this toggle.
 
@@ -153,7 +175,7 @@ Profile shows **Clinical records** with two choices:
 | Choice | What the UI does | What startup does |
 |--------|------------------|-------------------|
 | **MCP server** | **Fetch Data** stays in the bottom nav. The 1up **Connect health plan** card is hidden. | `MCPClient.initialize()` runs, as it does today. 1up is not called. |
-| **1upHealth** | **Fetch Data** is hidden. Profile shows **Health plan** next to **Apple Health**: Connect, last synced, and Sync now. | Startup does not call MCP, so a down MCP host does not block the app. |
+| **1upHealth** | **Fetch Data** is hidden. Profile shows **Health plan** next to **Apple Health**: **Add a provider**, and one row per connection with Refresh and Disconnect. | Startup does not call MCP, so a down MCP host does not block the app. |
 
 The choice is stored on the device as `clinical_record_source` = `mcp` or `oneup`. The default is `mcp`, so a build with the toggle still behaves as the app does today until someone switches it.
 
@@ -163,7 +185,7 @@ Switching does not delete the other source’s rows. Queries use `apple-health` 
 
 When we are ready for production 1up, the toggle is compiled out of the UI. The stored source is forced to `oneup`. There is no switch to turn 1up off. **Fetch Data** stays unlinked. `MCPClient` and the fetch screen remain in the project so a later provider-system path can turn them back on without rewriting them. That later change is another explicit build. It is not a setting the member can flip.
 
-## 6. Local storage
+## 8. Local storage
 
 Reuse the tables in `docs/SQLITE_SCHEMA.md`.
 
@@ -174,28 +196,32 @@ Reuse the tables in `docs/SQLITE_SCHEMA.md`.
 ```json
 "meta": {
   "source": "https://1up.health",
-  "tag": [{ "system": "urn:mywellwallet:provenance", "code": "1up-patient-access" }]
+  "tag": [
+    { "system": "urn:mywellwallet:provenance", "code": "1up-patient-access" },
+    { "system": "urn:mywellwallet:connection", "code": "{connection-id}" }
+  ]
 }
 ```
 
-- A 1up sync replaces the previous 1up rows for that patient. It does not delete `health_*` rows or rows tagged `ehr-fhir`.
+- A connection also has a SQLite row: id, display name, kind (`health-plan` or `health-system`), 1up system id when search returned one, authorize URL, FHIR Patient id, last synced time, status. Tokens are not in this row.
+- A refresh replaces previous rows for that connection id only. It does not delete other connections, `health_*` rows, or rows tagged `ehr-fhir`.
 - While the toggle is `oneup`, query plans use `dataSources: ["1up-patient-access", "apple-health"]`. While it is `mcp`, they use `dataSources: ["ehr-fhir", "apple-health"]`.
 
 Apple rows stay keyed by `users.id`. 1up rows stay keyed by FHIR Patient id. The app already has one local profile; the sync records the link between that profile and the Patient id it just downloaded. Queries must not mix two users.
 
-## 7. What the first build includes
+## 9. What the first build includes
 
 1. Sandbox client in the Dev Portal, redirect URL registered, demo sync requested from 1up.
-2. Profile action **Connect health plan**, using the demo auth URL and the synthetic member.
-3. Token exchange and a one-shot read of Patient plus the minimum resource set, plus any other types the demo server returns.
-4. Save into the existing FHIR tables with the 1up provenance tag.
+2. **Add a provider** on the Health plan card. In the sandbox the only result is the demo health plan. The search field filters that list. It does not call Provider Search until 1up confirms that API.
+3. Token exchange for that one connection. Save `access_token` and `refresh_token` (when present) in the Keychain under that connection. Download Patient plus the minimum resource set, plus any other types the demo server returns.
+4. Save FHIR with the 1up tag and this connection’s id. A second **Add a provider** later adds another connection instead of replacing this one.
 5. Profile toggle **Clinical records**: MCP server or 1upHealth. Default MCP. 1up mode hides Fetch Data and skips MCP at startup. MCP mode leaves Fetch Data as it is.
 6. Leave Apple Health connect, sync, and the Health tab as they are.
 7. Confirm a home question can see the stored 1up Patient or Coverage record and still see Apple Health vitals when those exist.
 
-Out of scope until the sandbox path works on the phone: production credentials, a token-exchange backend, writing data back to 1up, and multiple health plans on one profile.
+Out of scope until the sandbox path works on the phone: production credentials, a token-exchange backend, writing data back to 1up, and calling Provider Search before 1up confirms it is still available. The data model already allows a second connection. The sandbox UI only has the demo health plan to add.
 
-## 8. Production checklist (do not start until sandbox is visible in the app)
+## 10. Production checklist (do not start until sandbox is visible in the app)
 
 From 1up’s third-party application process:
 
