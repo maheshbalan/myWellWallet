@@ -4,7 +4,7 @@ Design only. No client credentials, tokens, or production access are part of thi
 
 The call sequence, registered redirect URL, and iOS callback setup are in [ONEUP_HEALTH_TECHNICAL_DESIGN.md](ONEUP_HEALTH_TECHNICAL_DESIGN.md).
 
-Apple Health stays as it is. 1upHealth replaces the FHIR MCP server as the source of clinical and claims records.
+Apple Health stays as it is. Clinical records come from either the FHIR MCP server or 1up Patient Access. A Profile toggle picks one. The MCP client stays in the app. When production 1up is turned on, the toggle is locked to 1up and is no longer shown.
 
 ## 1. What we are connecting to
 
@@ -37,26 +37,27 @@ Apple Health and 1up answer different questions. They stay separate until a quer
 | Where it lands | `health_*` tables, keyed by `users.id` | `fhir_patients` and `fhir_resources`, keyed by the FHIR Patient id |
 | Provenance tag | `apple-health` | `1up-patient-access` |
 
-The existing merge in `docs/INTEGRATED_HEALTH_EHR_DESIGN.md` still applies. The EHR side of that diagram stops being the MCP server and becomes 1up. Apple Health is unchanged.
+The existing merge in `docs/INTEGRATED_HEALTH_EHR_DESIGN.md` still applies. Apple Health is always on. The clinical side is whichever source the toggle has selected. MCP rows keep the `ehr-fhir` tag. 1up rows use `1up-patient-access`. A query reads Apple Health plus the active clinical tag, not both clinical tags at once.
 
 ```
-┌──────────────────────────┐         ┌──────────────────────────┐
-│  Apple HealthKit         │         │  1up Patient Access      │
-│  (this iPhone)           │         │  (health plan, FHIR R4)  │
-└────────────┬─────────────┘         └────────────┬─────────────┘
-             │ Connect + Sync now                 │ Connect health plan
-             ▼                                    ▼
-┌──────────────────────────┐         ┌──────────────────────────┐
-│  health_* tables         │         │  fhir_patients           │
-│  user_id                 │         │  fhir_resources          │
-└────────────┬─────────────┘         └────────────┬─────────────┘
-             │                                    │
-             └──────────────┬─────────────────────┘
-                            ▼
-                 LocalQueryService
-                 dataSources:
-                   apple-health
-                   1up-patient-access
+┌──────────────────────────┐
+│  Apple HealthKit         │
+│  always on               │
+└────────────┬─────────────┘
+             │
+             ▼
+┌──────────────────────────┐      Profile toggle (one clinical source)
+│  health_* tables         │      ┌─────────────┬──────────────────┐
+│  user_id                 │      │ MCP server  │ 1up Patient Access │
+└────────────┬─────────────┘      └──────┬──────┴────────┬─────────┘
+             │                           │               │
+             │                           ▼               ▼
+             │                    fhir_resources   fhir_resources
+             │                    tag ehr-fhir     tag 1up-patient-access
+             └──────────────┬────────────┬───────────────┘
+                            ▼            ▼
+                 LocalQueryService reads apple-health
+                 plus the tag for the selected source
                             ▼
                  Home chat / Health screens
 ```
@@ -143,17 +144,24 @@ The authorization `code` is single-use and lasts five minutes. Exchange it immed
 
 1up’s token request requires `client_secret`. A secret compiled into the iPhone app can be extracted. For the sandbox spike, the secret stays in a local config file that is gitignored, the same way other developer keys are kept off GitHub. Before any production client exists, the token exchange moves to a small backend the phone calls, and the secret never ships in the app. The phone still holds only the member’s access token, in the Keychain, not in SQLite.
 
-## 5. What happens to the MCP server
+## 5. MCP server and 1up are a toggle
 
-The MCP FHIR gateway is how **Fetch Data** fills `fhir_resources` today. That path is turned off in the UI when 1up sandbox mode is on.
+The MCP FHIR gateway stays. It is the clinical source we already have, and it may become the main way the wallet talks to provider systems later. 1up is the other clinical source, used for health-plan records. The member uses one of them at a time. Apple Health is not on this toggle.
 
-- The bottom nav item **Fetch Data** is hidden.
-- Startup no longer blocks on `MCPClient.initialize()`.
-- Profile gains **Health plan** next to the existing **Apple Health** card: Connect, last synced, and Sync now.
-- Home chat and Health screens keep reading the local database. They do not call MCP or 1up on each question.
-- The MCP client code can remain in the tree behind the flag until the sandbox sync is proven, then it is removed.
+Profile shows **Clinical records** with two choices:
 
-Apple Health’s Profile card, HealthKit permission, and `health_*` tables are not part of this cutover.
+| Choice | What the UI does | What startup does |
+|--------|------------------|-------------------|
+| **MCP server** | **Fetch Data** stays in the bottom nav. The 1up **Connect health plan** card is hidden. | `MCPClient.initialize()` runs, as it does today. 1up is not called. |
+| **1upHealth** | **Fetch Data** is hidden. Profile shows **Health plan** next to **Apple Health**: Connect, last synced, and Sync now. | Startup does not call MCP, so a down MCP host does not block the app. |
+
+The choice is stored on the device as `clinical_record_source` = `mcp` or `oneup`. The default is `mcp`, so a build with the toggle still behaves as the app does today until someone switches it.
+
+Switching does not delete the other source’s rows. Queries use `apple-health` plus either `ehr-fhir` or `1up-patient-access`, matching the toggle. Home chat still reads the local database. It does not call MCP or 1up on each question.
+
+### Production lock
+
+When we are ready for production 1up, the toggle is compiled out of the UI. The stored source is forced to `oneup`. There is no switch to turn 1up off. **Fetch Data** stays unlinked. `MCPClient` and the fetch screen remain in the project so a later provider-system path can turn them back on without rewriting them. That later change is another explicit build. It is not a setting the member can flip.
 
 ## 6. Local storage
 
@@ -170,8 +178,8 @@ Reuse the tables in `docs/SQLITE_SCHEMA.md`.
 }
 ```
 
-- A sync replaces the previous 1up rows for that patient. It does not delete `health_*` rows.
-- Query plans use `dataSources: ["1up-patient-access", "apple-health"]`. The old `ehr-fhir` source name is retired with the MCP path.
+- A 1up sync replaces the previous 1up rows for that patient. It does not delete `health_*` rows or rows tagged `ehr-fhir`.
+- While the toggle is `oneup`, query plans use `dataSources: ["1up-patient-access", "apple-health"]`. While it is `mcp`, they use `dataSources: ["ehr-fhir", "apple-health"]`.
 
 Apple rows stay keyed by `users.id`. 1up rows stay keyed by FHIR Patient id. The app already has one local profile; the sync records the link between that profile and the Patient id it just downloaded. Queries must not mix two users.
 
@@ -181,7 +189,7 @@ Apple rows stay keyed by `users.id`. 1up rows stay keyed by FHIR Patient id. The
 2. Profile action **Connect health plan**, using the demo auth URL and the synthetic member.
 3. Token exchange and a one-shot read of Patient plus the minimum resource set, plus any other types the demo server returns.
 4. Save into the existing FHIR tables with the 1up provenance tag.
-5. Hide Fetch Data and stop requiring MCP at launch.
+5. Profile toggle **Clinical records**: MCP server or 1upHealth. Default MCP. 1up mode hides Fetch Data and skips MCP at startup. MCP mode leaves Fetch Data as it is.
 6. Leave Apple Health connect, sync, and the Health tab as they are.
 7. Confirm a home question can see the stored 1up Patient or Coverage record and still see Apple Health vitals when those exist.
 
@@ -198,4 +206,4 @@ From 1up’s third-party application process:
 - Short description of who the app is for
 - Decision: one 1up payer customer, or their broader plan network
 
-After 1up accepts that request, they sync the production client id and redirect URI to the plan environments. The app then points at those hosts instead of `1uphealthdemo.com`. The member flow is the same shape: plan auth app, approval, FHIR read, local store. Apple Health is still a separate connection on the phone.
+After 1up accepts that request, they sync the production client id and redirect URI to the plan environments. The app then points at those hosts instead of `1uphealthdemo.com`. That production build locks the clinical-records toggle to 1up and removes the switch from Profile. The MCP client stays in the codebase. The member flow is the same shape: plan auth app, approval, FHIR read, local store. Apple Health is still a separate connection on the phone.

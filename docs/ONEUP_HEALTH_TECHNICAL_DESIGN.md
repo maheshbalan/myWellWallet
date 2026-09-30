@@ -52,7 +52,8 @@ The session succeeds only when 1up redirects to a URL whose scheme is `mywellwal
 
 | Piece | Role |
 |-------|------|
-| Profile **Connect health plan** | Starts the flow. Does not collect the test member’s name or member id. Those are typed into 1up’s demo page. |
+| Profile **Clinical records** toggle | `mcp` or `oneup`, stored as `clinical_record_source`. Default `mcp`. Only the selected source is started and queried. |
+| Profile **Connect health plan** | Shown only when the toggle is `oneup`. Starts the flow below. Does not collect the test member’s name or member id. Those are typed into 1up’s demo page. |
 | `OneUpAuthClient` | Builds the authorize URL, runs the web session, checks `state`, exchanges the code. |
 | `OneUpFhirClient` | `GET`s FHIR R4 with `Authorization: Bearer`. |
 | `OneUpSyncService` | Orders auth, then fetch, then local save. |
@@ -60,7 +61,9 @@ The session succeeds only when 1up redirects to a URL whose scheme is `mywellwal
 | `DatabaseService` | Writes `fhir_patients` and `fhir_resources`, same tables the MCP fetch uses today. |
 | Apple Health services | Not called from this flow. |
 
-Startup does not call 1up. A sync runs only from **Connect health plan** or **Sync now**.
+Startup calls `MCPClient.initialize()` only when `clinical_record_source` is `mcp`. It never calls 1up at startup. A 1up sync runs only from **Connect health plan** or **Sync now**, and only when the source is `oneup`.
+
+A production build sets `clinical_record_source` to `oneup` and does not render the toggle. Writes to the setting are ignored. `MCPClient` stays compiled in and is not initialized.
 
 ## 4. Authorize request
 
@@ -86,6 +89,16 @@ GET https://auth.1uphealthdemo.com/oauth2/authorize/test
 ## 5. Logic sequence
 
 ```
+Profile.ClinicalRecords toggle
+        │
+        ├─ mcp ── MCPClient.initialize on startup
+        │         Fetch Data tab visible
+        │         OneUpSyncService is not called
+        │
+        └─ oneup ─ MCPClient is not initialized
+                    Fetch Data tab hidden
+                    │
+                    ▼
 Profile.ConnectHealthPlan
         │
         ▼
