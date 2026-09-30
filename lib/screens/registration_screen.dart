@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -177,7 +178,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading: AppBarLogo(
           showBackButton: true,
@@ -192,9 +193,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         ),
         title: const Text('Create Account'),
         automaticallyImplyLeading: false,
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.cream,
         elevation: 0,
-        foregroundColor: const Color(0xFF1E293B),
+        foregroundColor: AppPalette.ink,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -238,7 +239,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           'Create your account',
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.w600,
-                            color: const Color(0xFF1E293B),
+                            color: AppPalette.ink,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -246,7 +247,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                         Text(
                           'Enter your details to get started',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF64748B),
+                            color: AppPalette.muted,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -347,7 +348,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                             'Choose authentication method',
                             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w600,
-                              color: const Color(0xFF1E293B),
+                              color: AppPalette.ink,
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -363,9 +364,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                               icon: Icon(
                                 FontAwesomeIcons.fingerprint,
                                 size: 20,
-                                color: _authMethod == 'biometric'
-                                    ? Colors.white
-                                    : colorScheme.primary,
+                                color: AppPalette.ink,
                               ),
                               label: const Text('Use Biometric'),
                               style: ElevatedButton.styleFrom(
@@ -373,9 +372,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                                 backgroundColor: _authMethod == 'biometric'
                                     ? colorScheme.primary
                                     : null,
-                                foregroundColor: _authMethod == 'biometric'
-                                    ? Colors.white
-                                    : null,
+                                foregroundColor: AppPalette.ink,
                               ),
                             ),
                           ),
@@ -391,9 +388,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                               icon: Icon(
                                 FontAwesomeIcons.lock,
                                 size: 18,
-                                color: _authMethod == 'pin'
-                                    ? Colors.white
-                                    : colorScheme.primary,
+                                color: AppPalette.ink,
                               ),
                               label: const Text('Use PIN'),
                               style: OutlinedButton.styleFrom(
@@ -401,9 +396,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                                 backgroundColor: _authMethod == 'pin'
                                     ? colorScheme.primary
                                     : null,
-                                foregroundColor: _authMethod == 'pin'
-                                    ? Colors.white
-                                    : null,
+                                foregroundColor: AppPalette.ink,
                               ),
                             ),
                           ),
@@ -435,7 +428,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                                       width: 22,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        valueColor: AlwaysStoppedAnimation<Color>(AppPalette.ink),
                                       ),
                                     )
                                   : const Text('Create Account'),

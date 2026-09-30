@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -243,20 +244,20 @@ class _FetchDataScreenState extends State<FetchDataScreen> {
           children: [
             // Header Card (light tint)
             Card(
-              color: const Color(0xFFE3F2FD),
+              color: AppPalette.card,
               elevation: 0,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: Color(0xFFBBDEFB)),
+                borderRadius: BorderRadius.circular(AppPalette.radius),
+                side: const BorderSide(color: AppPalette.border),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.cloud_download_outlined,
                       size: 48,
-                      color: const Color(0xFF1976D2),
+                      color: AppPalette.gold,
                     ),
                     const SizedBox(height: 16),
                     Text(

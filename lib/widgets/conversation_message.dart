@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../theme/app_palette.dart';
 
 class ConversationMessage extends StatelessWidget {
   final bool isUser;
@@ -18,8 +19,6 @@ class ConversationMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
       child: Row(
@@ -31,13 +30,13 @@ class ConversationMessage extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: const Color(0xFFE8E0F0),
+                color: AppPalette.creamWarm,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(
                 Icons.medical_services_outlined,
                 size: 18,
-                color: Color(0xFF7B1FA2),
+                color: AppPalette.gold,
               ),
             ),
             const SizedBox(width: 10),
@@ -57,17 +56,9 @@ class ConversationMessage extends StatelessWidget {
               child: Container(
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: isUser
-                      ? colorScheme.primary
-                      : const Color(0xFFF5F3FF),
+                  color: isUser ? AppPalette.ink : AppPalette.card,
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(isUser ? 0.12 : 0.06),
-                      blurRadius: isUser ? 8 : 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  border: isUser ? null : Border.all(color: AppPalette.border),
                 ),
                 child: IntrinsicHeight(
                   child: Row(
@@ -77,7 +68,7 @@ class ConversationMessage extends StatelessWidget {
                       if (!isUser)
                         Container(
                           width: 6,
-                          color: const Color(0xFFB39DDB),
+                          color: AppPalette.gold,
                         ),
                       Flexible(
                         child: Padding(
@@ -91,7 +82,7 @@ class ConversationMessage extends StatelessWidget {
                                   children: [
                                     IconButton(
                                       icon: const Icon(Icons.copy_outlined, size: 16),
-                                      color: const Color(0xFF64748B),
+                                      color: AppPalette.muted,
                                       padding: EdgeInsets.zero,
                                       constraints: const BoxConstraints(),
                                       onPressed: () {
@@ -117,7 +108,7 @@ class ConversationMessage extends StatelessWidget {
                                       : Text(
                                           message,
                                           style: TextStyle(
-                                            color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                                            color: isUser ? AppPalette.card : AppPalette.ink,
                                             fontSize: 15,
                                             height: 1.5,
                                           ),
@@ -139,13 +130,13 @@ class ConversationMessage extends StatelessWidget {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: colorScheme.secondary.withValues(alpha: 0.1),
+                color: AppPalette.goldSoft,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(
+              child: const Icon(
                 FontAwesomeIcons.user,
                 size: 16,
-                color: colorScheme.secondary,
+                color: AppPalette.ink,
               ),
             ),
           ],
@@ -207,7 +198,7 @@ class _AnimatedThreeDotsState extends State<_AnimatedThreeDots> with SingleTicke
                 width: 6,
                 height: 6,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF7B1FA2).withOpacity(opacity.clamp(0.3, 1.0)),
+                  color: AppPalette.gold.withOpacity(opacity.clamp(0.3, 1.0)),
                   shape: BoxShape.circle,
                 ),
               );
@@ -251,12 +242,12 @@ class TypingIndicator extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppPalette.card,
               borderRadius: BorderRadius.circular(16).copyWith(
                 bottomLeft: const Radius.circular(4),
               ),
               border: Border.all(
-                color: Colors.grey.shade200,
+                color: AppPalette.border,
                 width: 1,
               ),
             ),
@@ -266,7 +257,7 @@ class TypingIndicator extends StatelessWidget {
                 Text(
                   'Working',
                   style: TextStyle(
-                    color: const Color(0xFF7F8C8D),
+                    color: AppPalette.muted,
                     fontSize: 15,
                   ),
                 ),
@@ -365,7 +356,7 @@ class _MarkdownText extends StatelessWidget {
             child: Text(
               line.substring(2),
               style: TextStyle(
-                color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                color: isUser ? AppPalette.card : AppPalette.ink,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
                 height: 1.4,
@@ -381,7 +372,7 @@ class _MarkdownText extends StatelessWidget {
             child: Text(
               line.substring(3),
               style: TextStyle(
-                color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                color: isUser ? AppPalette.card : AppPalette.ink,
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 height: 1.4,
@@ -397,7 +388,7 @@ class _MarkdownText extends StatelessWidget {
             child: Text(
               line.substring(4),
               style: TextStyle(
-                color: isUser ? Colors.white : const Color(0xFF2C3E50),
+                color: isUser ? AppPalette.card : AppPalette.ink,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
                 height: 1.4,
@@ -416,7 +407,7 @@ class _MarkdownText extends StatelessWidget {
                 Text(
                   '• ',
                   style: TextStyle(
-                    color: isUser ? Colors.white : const Color(0xFF7B1FA2),
+                    color: isUser ? AppPalette.card : AppPalette.gold,
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
@@ -438,7 +429,7 @@ class _MarkdownText extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Divider(
               color: isUser
-                  ? Colors.white.withOpacity(0.3)
+                  ? AppPalette.card.withOpacity(0.3)
                   : Colors.grey.shade300,
               thickness: 1,
             ),
@@ -503,7 +494,7 @@ class _RichTextLine extends StatelessWidget {
       return Text(
         text,
         style: TextStyle(
-          color: isUser ? Colors.white : const Color(0xFF2C3E50),
+          color: isUser ? AppPalette.card : AppPalette.ink,
           fontSize: 15,
           height: 1.5,
         ),
@@ -514,7 +505,7 @@ class _RichTextLine extends StatelessWidget {
       text: TextSpan(
         children: spans,
         style: TextStyle(
-          color: isUser ? Colors.white : const Color(0xFF2C3E50),
+          color: isUser ? AppPalette.card : AppPalette.ink,
           fontSize: 15,
           height: 1.5,
           fontFamily: 'Roboto', // Use a standard font for rich text

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -60,7 +61,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
   Widget build(BuildContext context) {
     if (!Platform.isIOS) {
       return Scaffold(
-        backgroundColor: const Color(0xFFFAFAFA),
+        backgroundColor: AppPalette.cream,
         appBar: AppBar(
           leading: const AppBarLogo(showBackButton: false),
           title: const Text('Health'),
@@ -73,11 +74,11 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading: const AppBarLogo(showBackButton: true),
         title: const Text('Health'),
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.cream,
         elevation: 0,
       ),
       body: _loading
@@ -93,7 +94,7 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
                     Text(
                       'Diabetes & heart health',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: const Color(0xFF64748B),
+                            color: AppPalette.muted,
                           ),
                     ),
                     const SizedBox(height: 16),
@@ -105,8 +106,8 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
                           : '—',
                       trend: _glucose.isNotEmpty ? _glucoseTrend(_glucose.first['value'] as num) : null,
                       icon: FontAwesomeIcons.droplet,
-                      iconBg: const Color(0xFFE3F2FD),
-                      iconColor: const Color(0xFF1976D2),
+                      iconBg: AppPalette.creamWarm,
+                      iconColor: AppPalette.gold,
                       onTap: () => context.push('/health/glucose'),
                     ),
                     const SizedBox(height: 12),
@@ -147,8 +148,8 @@ class _HealthDashboardScreenState extends State<HealthDashboardScreen> {
                             )
                           : null,
                       icon: FontAwesomeIcons.gaugeHigh,
-                      iconBg: const Color(0xFFF3E5F5),
-                      iconColor: const Color(0xFF7B1FA2),
+                      iconBg: AppPalette.goldSoft,
+                      iconColor: AppPalette.gold,
                       onTap: () => context.push('/health/blood-pressure'),
                     ),
                     const SizedBox(height: 12),
@@ -232,7 +233,7 @@ class _SummaryCard extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE8E0F0)),
+            border: Border.all(color: AppPalette.border),
           ),
           child: Row(
             children: [
@@ -254,13 +255,13 @@ class _SummaryCard extends StatelessWidget {
                       title,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
-                            color: const Color(0xFF1E293B),
+                            color: AppPalette.ink,
                           ),
                     ),
                     Text(
                       subtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF64748B),
+                            color: AppPalette.muted,
                           ),
                     ),
                     const SizedBox(height: 4),
@@ -268,7 +269,7 @@ class _SummaryCard extends StatelessWidget {
                       value,
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: const Color(0xFF7B1FA2),
+                            color: AppPalette.gold,
                           ),
                     ),
                     if (trend != null)
@@ -288,7 +289,7 @@ class _SummaryCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+              const Icon(Icons.chevron_right, color: AppPalette.hint),
             ],
           ),
         ),

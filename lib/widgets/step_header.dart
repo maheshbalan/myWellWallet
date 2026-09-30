@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 
 /// Mynugen-style step header: step X of Y, progress bar, optional title and subtitle.
 class StepHeader extends StatelessWidget {
@@ -28,7 +29,7 @@ class StepHeader extends StatelessWidget {
         Text(
           'Step $step of $totalSteps',
           style: theme.textTheme.labelLarge?.copyWith(
-            color: const Color(0xFF64748B),
+            color: AppPalette.muted,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -38,8 +39,8 @@ class StepHeader extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: progress,
-              backgroundColor: const Color(0xFFE2E8F0),
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+              backgroundColor: AppPalette.border,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppPalette.gold),
               minHeight: 6,
             ),
           ),
@@ -50,7 +51,7 @@ class StepHeader extends StatelessWidget {
             title!,
             style: theme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w600,
-              color: const Color(0xFF1E293B),
+              color: AppPalette.ink,
             ),
           ),
         ],
@@ -59,7 +60,7 @@ class StepHeader extends StatelessWidget {
           Text(
             subtitle!,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF64748B),
+              color: AppPalette.muted,
             ),
           ),
         ],

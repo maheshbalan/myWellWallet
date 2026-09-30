@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -79,14 +80,14 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
   Widget build(BuildContext context) {
     if (!Platform.isIOS) return _buildUnsupported();
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading: AppBarLogo(
           showBackButton: true,
           onBack: () => context.go('/health'),
         ),
         title: const Text('Lab results'),
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.cream,
         elevation: 0,
       ),
       body: _loading
@@ -102,7 +103,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
                       Text(
                         'Latest value per test',
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: const Color(0xFF64748B),
+                              color: AppPalette.muted,
                             ),
                       ),
                       const SizedBox(height: 4),
@@ -111,7 +112,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
                         'compact table—with reference-range flags and comparison to '
                         'the prior reading.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: const Color(0xFF94A3B8),
+                              color: AppPalette.hint,
                             ),
                       ),
                       const SizedBox(height: 16),
@@ -138,7 +139,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFE8E0F0)),
+        side: const BorderSide(color: AppPalette.border),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -179,7 +180,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
                       name,
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF1E293B),
+                        color: AppPalette.ink,
                         fontSize: 16,
                       ),
                     ),
@@ -199,7 +200,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
                           'Ref: $refRange',
                           style: const TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF64748B),
+                            color: AppPalette.muted,
                           ),
                         ),
                       ),
@@ -210,7 +211,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
                           'LOINC $lc',
                           style: const TextStyle(
                             fontSize: 11,
-                            color: Color(0xFF94A3B8),
+                            color: AppPalette.hint,
                           ),
                         ),
                       ),
@@ -224,7 +225,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
                             src,
                             style: const TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF64748B),
+                              color: AppPalette.muted,
                             ),
                           ),
                         Chip(
@@ -241,7 +242,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
                                 ? Icons.timeline
                                 : Icons.fiber_manual_record,
                             size: 14,
-                            color: Color(0xFF7B1FA2),
+                            color: AppPalette.gold,
                           ),
                           label: Text(
                             '$nReads reading${nReads == 1 ? '' : 's'} on device',
@@ -255,7 +256,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
                       'Latest: ${DateFormat.yMMMEd().add_jm().format(recorded)}',
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF64748B),
+                        color: AppPalette.muted,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -270,7 +271,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+              const Icon(Icons.chevron_right, color: AppPalette.hint),
             ],
           ),
         ),
@@ -280,7 +281,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
 
   Widget _buildUnsupported() {
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading:
             AppBarLogo(showBackButton: true, onBack: () => context.go('/health')),
@@ -305,7 +306,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
             Text(
               'No lab results synced yet',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: const Color(0xFF64748B),
+                    color: AppPalette.muted,
                   ),
               textAlign: TextAlign.center,
             ),
@@ -315,7 +316,7 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
               'Health Records—lab results. Blood tests added by labs such as Sonora '
               'Quest appear after Apple imports them.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF94A3B8),
+                    color: AppPalette.hint,
                   ),
               textAlign: TextAlign.center,
             ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -164,10 +165,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final authProvider = context.watch<AuthProvider>();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading: const AppBarLogo(showBackButton: false),
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.cream,
         elevation: 0,
       ),
       body: SafeArea(
@@ -185,14 +186,13 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 // Card-style content area (light tint)
                 Material(
-                  color: const Color(0xFFF5F3FF),
-                  borderRadius: BorderRadius.circular(24),
-                  elevation: 1,
-                  shadowColor: Colors.black12,
+                  color: AppPalette.card,
+                  borderRadius: BorderRadius.circular(AppPalette.radiusLg),
+                  elevation: 0,
                   child: Container(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFE8E0F0)),
+                      borderRadius: BorderRadius.circular(AppPalette.radiusLg),
+                      border: Border.all(color: AppPalette.border),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -210,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             errorBuilder: (_, __, ___) => const Icon(
                               Icons.medical_services,
                               size: 48,
-                              color: Color(0xFF7B1FA2),
+                              color: AppPalette.gold,
                             ),
                           ),
                         ),
@@ -219,7 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           'MyWellWallet',
                           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: const Color(0xFF1E293B),
+                            color: AppPalette.ink,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -227,7 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         Text(
                           'Welcome back',
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: const Color(0xFF64748B),
+                            color: AppPalette.muted,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -236,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           Text(
                             authProvider.currentUser!.name,
                             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: const Color(0xFF1E293B),
+                              color: AppPalette.ink,
                             ),
                             textAlign: TextAlign.center,
                           ),

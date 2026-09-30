@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -347,7 +348,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               SizedBox(height: 12),
               Text(
                 'If MyWellWallet is not in the list, return to the app and tap the microphone icon once so the permission prompt appears, then check Settings again.',
-                style: TextStyle(height: 1.4, fontSize: 12, color: Color(0xFF64748B)),
+                style: TextStyle(height: 1.4, fontSize: 12, color: AppPalette.muted),
               ),
             ],
           ),
@@ -605,23 +606,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final isProcessing = context.watch<QueryProvider>().isProcessing;
     final inputLocked =
         isInputLocked(isStreaming: _isStreaming, isProcessing: isProcessing);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading: _messages.length > 1
             ? IconButton(
-                icon: const Icon(Icons.arrow_back, color: Color(0xFF64748B)),
+                icon: const Icon(Icons.arrow_back, color: AppPalette.muted),
                 onPressed: _resetChat,
                 tooltip: 'Back to home',
               )
             : const AppBarLogo(showBackButton: false),
         title: const Text('MyWellWallet'),
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.cream,
         elevation: 0,
         actions: [
           // Gemma status indicator
@@ -652,7 +652,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Color(0xFF64748B)),
+            icon: const Icon(Icons.more_vert, color: AppPalette.muted),
             onSelected: (value) async {
               if (value == 'test') {
                 context.push('/test-sse');
@@ -745,7 +745,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             child: const Icon(
                               Icons.keyboard_arrow_down_rounded,
                               size: 28,
-                              color: Color(0xFF7B1FA2),
+                              color: AppPalette.gold,
                             ),
                           ),
                         ),
@@ -759,7 +759,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             if (_messages.length == 1 && _followUpPrompts.isNotEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                color: const Color(0xFFFAFAFA),
+                color: AppPalette.cream,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -768,47 +768,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: const Color(0xFF64748B),
+                        color: AppPalette.muted,
                       ),
                     ),
                     const SizedBox(height: 10),
-                    ..._followUpPrompts.take(3).toList().asMap().entries.map((entry) {
-                      final i = entry.key;
-                      final prompt = entry.value;
-                      final cardBgColors = [
-                        const Color(0xFFFFEBEE),
-                        const Color(0xFFF3E5F5),
-                        const Color(0xFFE8F5E9),
-                      ];
-                      final iconColors = [
-                        const Color(0xFFD32F2F),
-                        const Color(0xFF7B1FA2),
-                        const Color(0xFF388E3C),
-                      ];
-                      final bg = cardBgColors[i % cardBgColors.length];
-                      final iconColor = iconColors[i % iconColors.length];
+                    ..._followUpPrompts.take(3).map((prompt) {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Material(
-                          color: bg,
-                          borderRadius: BorderRadius.circular(20),
+                          color: AppPalette.card,
+                          borderRadius: BorderRadius.circular(AppPalette.radius),
                           elevation: 0,
                           child: InkWell(
                             onTap: inputLocked
                                 ? null
                                 : () => _handleFollowUpPrompt(prompt),
-                            borderRadius: BorderRadius.circular(20),
-                            child: Padding(
+                            borderRadius: BorderRadius.circular(AppPalette.radius),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(AppPalette.radius),
+                                border: Border.all(color: AppPalette.border),
+                              ),
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                               child: Row(
                                 children: [
                                   Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: iconColor.withOpacity(0.15),
+                                      color: AppPalette.goldSoft,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
-                                    child: Icon(Icons.medical_services_outlined, size: 22, color: iconColor),
+                                    child: const Icon(Icons.medical_services_outlined, size: 22, color: AppPalette.gold),
                                   ),
                                   const SizedBox(width: 14),
                                   Expanded(
@@ -816,8 +806,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       prompt,
                                       style: const TextStyle(
                                         fontSize: 15,
-                                        fontWeight: FontWeight.w500,
-                                        color: Color(0xFF1E293B),
+                                        fontWeight: FontWeight.w600,
+                                        color: AppPalette.ink,
                                       ),
                                     ),
                                   ),
@@ -835,20 +825,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // Chat input section at the bottom
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-              decoration: BoxDecoration(
-                color: colorScheme.primary,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(28),
-                  topRight: Radius.circular(28),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: colorScheme.primary.withOpacity(0.25),
-                    blurRadius: 12,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              decoration: const BoxDecoration(
+                color: AppPalette.cream,
+                border: Border(top: BorderSide(color: AppPalette.border)),
               ),
               child: Row(
                 children: [
@@ -856,15 +836,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: Container(
                       height: 56,
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+                        color: AppPalette.card,
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(color: AppPalette.border),
                       ),
                       child: Row(
                         children: [
@@ -872,14 +846,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           Expanded(
                             child: TextField(
                               controller: _queryController,
-                              style: const TextStyle(fontSize: 18),
+                              style: const TextStyle(fontSize: 16, color: AppPalette.ink),
                               decoration: InputDecoration(
                                 hintText: _isListening
                                     ? 'Listening...'
                                     : 'Ask me about your health...',
-                                hintStyle: TextStyle(
+                                hintStyle: const TextStyle(
                                   fontSize: 16,
-                                  color: Colors.grey.shade500,
+                                  color: AppPalette.hint,
                                 ),
                                 border: InputBorder.none,
                               ),
@@ -889,36 +863,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               enabled: !_isListening && !inputLocked,
                             ),
                           ),
-                          // Microphone button
                           Container(
-                            margin: const EdgeInsets.only(right: 8),
-                            width: 48,
-                            height: 48,
+                            margin: const EdgeInsets.only(right: 6),
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
-                              color: _isListening
-                                  ? Colors.red
-                                  : Colors.grey.shade400,
+                              color: _isListening ? AppPalette.error : AppPalette.creamWarm,
                               shape: BoxShape.circle,
-                              boxShadow: _isListening
-                                  ? [
-                                      BoxShadow(
-                                        color: Colors.red.withOpacity(0.5),
-                                        blurRadius: 10,
-                                        spreadRadius: 1,
-                                      ),
-                                    ]
-                                  : null,
                             ),
                             child: IconButton(
                               icon: Icon(
                                 _isListening ? Icons.mic : Icons.mic_outlined,
-                                color: Colors.white,
-                                size: 26,
+                                color: _isListening ? AppPalette.card : AppPalette.ink,
+                                size: 22,
                               ),
                               onPressed: inputLocked ? null : _toggleListening,
-                              tooltip: _isListening
-                                  ? 'Stop'
-                                  : 'Voice input',
+                              tooltip: _isListening ? 'Stop' : 'Voice input',
                             ),
                           ),
                         ],
@@ -926,26 +886,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Send Button
                   Container(
-                    width: 60,
-                    height: 60,
+                    width: 56,
+                    height: 56,
                     decoration: BoxDecoration(
-                      color: colorScheme.primary,
+                      color: AppPalette.gold,
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: colorScheme.primary.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                          color: AppPalette.gold.withOpacity(0.3),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
                     child: IconButton(
                       icon: const Icon(
                         Icons.send_outlined,
-                        color: Colors.white,
-                        size: 24,
+                        color: AppPalette.ink,
+                        size: 22,
                       ),
                       onPressed: inputLocked ? null : _processQuery,
                       tooltip: 'Send',
@@ -974,12 +933,12 @@ class TypingIndicator extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: const BoxDecoration(
-              color: Color(0xFFE8E0F0),
+              color: AppPalette.border,
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.medical_services_outlined,
-              color: Color(0xFF7B1FA2),
+              color: AppPalette.gold,
               size: 20,
             ),
           ),

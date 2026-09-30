@@ -32,6 +32,7 @@ import 'screens/health_lab_detail_screen.dart';
 import 'screens/log_viewer_screen.dart';
 import 'test/mcp_sse_test_screen.dart';
 import 'config/app_config.dart';
+import 'theme/app_palette.dart';
 
 void main() {
   runZonedGuarded(() async {
@@ -201,49 +202,51 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
     }
   }
 
-  /// Theme: purple accent, light background, rounded cards.
+  /// Cream canvas, warm ink, gold actions. Matches the mynugen palette.
   static ThemeData _buildSafeTheme() {
-    const primaryPurple = Color(0xFF7C3AED);
-    const primaryPurpleLight = Color(0xFFA78BFA);
-    const surfaceDark = Color(0xFF1E293B);
-    const surfaceMuted = Color(0xFF64748B);
+    final textTheme = GoogleFonts.plusJakartaSansTextTheme(
+      ThemeData.light().textTheme,
+    ).apply(
+      bodyColor: AppPalette.ink,
+      displayColor: AppPalette.ink,
+    );
     const colorScheme = ColorScheme.light(
-      primary: primaryPurple,
-      secondary: primaryPurpleLight,
-      tertiary: Color(0xFFF59E0B),
-      surface: Colors.white,
-      background: Color(0xFFFAFAFA),
-      error: Color(0xFFDC2626),
-      onPrimary: Colors.white,
-      onSecondary: Colors.white,
-      onSurface: surfaceDark,
-      onBackground: surfaceDark,
+      primary: AppPalette.gold,
+      secondary: AppPalette.creamWarm,
+      tertiary: AppPalette.gold,
+      surface: AppPalette.card,
+      error: AppPalette.error,
+      onPrimary: AppPalette.ink,
+      onSecondary: AppPalette.ink,
+      onSurface: AppPalette.ink,
       onError: Colors.white,
+      outline: AppPalette.border,
       brightness: Brightness.light,
     );
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      textTheme: ThemeData.light().textTheme.apply(
-        bodyColor: surfaceDark,
-        displayColor: surfaceDark,
-      ),
-      appBarTheme: const AppBarTheme(
+      textTheme: textTheme,
+      appBarTheme: AppBarTheme(
         centerTitle: true,
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: surfaceDark,
-        titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: surfaceDark),
-        iconTheme: IconThemeData(color: surfaceMuted),
+        backgroundColor: AppPalette.cream,
+        foregroundColor: AppPalette.ink,
+        titleTextStyle: GoogleFonts.plusJakartaSans(
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          color: AppPalette.ink,
+        ),
+        iconTheme: const IconThemeData(color: AppPalette.muted),
       ),
       cardTheme: CardThemeData(
-        elevation: 2,
-        shadowColor: Colors.black26,
-        color: Colors.white,
+        elevation: 0,
+        color: AppPalette.card,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppPalette.radius),
+          side: const BorderSide(color: AppPalette.border),
         ),
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         clipBehavior: Clip.antiAlias,
@@ -252,44 +255,46 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
         style: ElevatedButton.styleFrom(
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          backgroundColor: primaryPurple,
-          foregroundColor: Colors.white,
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          shape: const StadiumBorder(),
+          backgroundColor: AppPalette.gold,
+          foregroundColor: AppPalette.ink,
+          textStyle: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: primaryPurple,
-          side: const BorderSide(color: primaryPurpleLight),
+          foregroundColor: AppPalette.ink,
+          side: const BorderSide(color: AppPalette.border),
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: const StadiumBorder(),
+          textStyle: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: surfaceMuted,
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+          foregroundColor: AppPalette.muted,
+          textStyle: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppPalette.card,
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppPalette.radiusSm)),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderRadius: BorderRadius.circular(AppPalette.radiusSm),
+          borderSide: const BorderSide(color: AppPalette.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: primaryPurple, width: 2),
+          borderRadius: BorderRadius.circular(AppPalette.radiusSm),
+          borderSide: const BorderSide(color: AppPalette.gold, width: 2),
         ),
-        labelStyle: const TextStyle(color: surfaceMuted),
-        hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+        labelStyle: const TextStyle(color: AppPalette.muted),
+        hintStyle: const TextStyle(color: AppPalette.hint),
       ),
-      scaffoldBackgroundColor: const Color(0xFFFAFAFA),
-      dividerColor: const Color(0xFFE2E8F0),
+      scaffoldBackgroundColor: AppPalette.cream,
+      dividerColor: AppPalette.border,
+      progressIndicatorTheme: const ProgressIndicatorThemeData(color: AppPalette.gold),
     );
   }
 
@@ -308,14 +313,14 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
                   'assets/icons/MyWellWallet.png',
                   width: 100,
                   height: 100,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.medical_services, size: 60, color: Color(0xFF7C3AED)),
+                  errorBuilder: (_, __, ___) => const Icon(Icons.medical_services, size: 60, color: AppPalette.gold),
                 ),
                 const SizedBox(height: 32),
                 const CircularProgressIndicator(),
                 const SizedBox(height: 24),
                 const Text(
                   'Initializing MyWellWallet...',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppPalette.muted),
                 ),
               ],
             ),

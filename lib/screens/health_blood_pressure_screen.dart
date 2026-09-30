@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -52,14 +53,14 @@ class _HealthBloodPressureScreenState extends State<HealthBloodPressureScreen> {
   Widget build(BuildContext context) {
     if (!Platform.isIOS) return _buildUnsupported();
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading: AppBarLogo(
           showBackButton: true,
           onBack: () => context.go('/health'),
         ),
         title: const Text('Blood pressure'),
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.cream,
         elevation: 0,
       ),
       body: _loading
@@ -80,25 +81,25 @@ class _HealthBloodPressureScreenState extends State<HealthBloodPressureScreen> {
                       final isElevated = category == 'Elevated' || category == 'High normal';
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
-                        color: const Color(0xFFF3E5F5),
+                        color: AppPalette.card,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: const BorderSide(color: Color(0xFFE1BEE7)),
+                          borderRadius: BorderRadius.circular(AppPalette.radius),
+                          side: const BorderSide(color: AppPalette.border),
                         ),
                         child: ListTile(
                           leading: Container(
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE1BEE7),
+                              color: AppPalette.creamWarm,
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(FontAwesomeIcons.gaugeHigh, color: Color(0xFF7B1FA2), size: 22),
+                            child: const Icon(FontAwesomeIcons.gaugeHigh, color: AppPalette.gold, size: 22),
                           ),
                           title: Text(
                             '${sys.toStringAsFixed(0)} / ${dias.toStringAsFixed(0)} mmHg',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1E293B)),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppPalette.ink),
                           ),
                           subtitle: Text(
                             '${DateFormat.yMMMd().add_Hm().format(recorded)} · $category',
@@ -136,7 +137,7 @@ class _HealthBloodPressureScreenState extends State<HealthBloodPressureScreen> {
             const SizedBox(height: 16),
             Text('No blood pressure data yet', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            Text('Connect Apple Health in Profile to sync.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B))),
+            Text('Connect Apple Health in Profile to sync.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppPalette.muted)),
           ],
         ),
       );

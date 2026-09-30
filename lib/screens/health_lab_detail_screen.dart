@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -122,7 +123,7 @@ class _HealthLabDetailScreenState extends State<HealthLabDetailScreen> {
     final dateFmt = DateFormat.yMMMEd().add_jm();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading: AppBarLogo(showBackButton: true, onBack: () => context.pop()),
         title: Column(
@@ -137,13 +138,13 @@ class _HealthLabDetailScreenState extends State<HealthLabDetailScreen> {
                 'LOINC $lc',
                 style: const TextStyle(
                   fontSize: 11,
-                  color: Color(0xFF64748B),
+                  color: AppPalette.muted,
                   fontWeight: FontWeight.normal,
                 ),
               ),
           ],
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.cream,
         elevation: 0,
       ),
       body: _loading
@@ -173,7 +174,7 @@ class _HealthLabDetailScreenState extends State<HealthLabDetailScreen> {
                                       BorderRadius.circular(14),
                                   border: Border.all(
                                       color:
-                                          const Color(0xFFE2E8F0)),
+                                          AppPalette.border),
                                 ),
                                 child: DataTableTheme(
                                   data: DataTableThemeData(
@@ -185,7 +186,7 @@ class _HealthLabDetailScreenState extends State<HealthLabDetailScreen> {
                                     dividerThickness: 0.5,
                                     dataTextStyle: const TextStyle(
                                       fontSize: 13,
-                                      color: Color(0xFF1E293B),
+                                      color: AppPalette.ink,
                                     ),
                                   ),
                                   child: DataTable(
@@ -258,8 +259,7 @@ class _HealthLabDetailScreenState extends State<HealthLabDetailScreen> {
                                               fontSize: 12,
                                               color:
                                                   delta == null
-                                                      ? const Color(
-                                                          0xFF94A3B8)
+                                                      ? AppPalette.hint
                                                       : const Color(
                                                           0xFF475569),
                                             ),

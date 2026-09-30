@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -45,11 +46,11 @@ class _HealthStepsScreenState extends State<HealthStepsScreen> {
   Widget build(BuildContext context) {
     if (!Platform.isIOS) return _buildUnsupported();
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading: const AppBarLogo(showBackButton: true),
         title: const Text('Steps & walking'),
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.cream,
         elevation: 0,
       ),
       body: _loading
@@ -86,11 +87,11 @@ class _HealthStepsScreenState extends State<HealthStepsScreen> {
                           ),
                           title: Text(
                             '$count steps',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1E293B)),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppPalette.ink),
                           ),
                           subtitle: Text(
                             '${DateFormat.yMMMd().format(start)}${dist != null ? ' · ${(dist / 1000).toStringAsFixed(2)} km' : ''}',
-                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                            style: const TextStyle(color: AppPalette.muted, fontSize: 13),
                           ),
                         ),
                       );
@@ -118,7 +119,7 @@ class _HealthStepsScreenState extends State<HealthStepsScreen> {
             const SizedBox(height: 16),
             Text('No steps data yet', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            Text('Connect Apple Health in Profile to sync.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B))),
+            Text('Connect Apple Health in Profile to sync.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppPalette.muted)),
           ],
         ),
       );

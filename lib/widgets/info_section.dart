@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../theme/app_palette.dart';
 
 class InfoSection extends StatelessWidget {
   final String title;
@@ -15,15 +16,13 @@ class InfoSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    
     return Card(
       margin: const EdgeInsets.only(bottom: 20),
-      color: const Color(0xFFF5F3FF),
+      color: AppPalette.card,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: Color(0xFFE8E0F0)),
+        borderRadius: BorderRadius.circular(24),
+        side: const BorderSide(color: AppPalette.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -36,13 +35,13 @@ class InfoSection extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8E0F0),
+                    color: AppPalette.creamWarm,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     icon,
                     size: 20,
-                    color: const Color(0xFF7B1FA2),
+                    color: AppPalette.gold,
                   ),
                 ),
                 const SizedBox(width: 16),

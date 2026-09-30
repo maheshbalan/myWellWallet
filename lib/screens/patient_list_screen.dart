@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../theme/app_palette.dart';
 import '../providers/patient_provider.dart';
 import '../widgets/app_bar_logo.dart';
 import '../widgets/patient_card.dart';
@@ -171,7 +172,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
           return FloatingActionButton(
             onPressed: provider.isLoading ? null : () => provider.loadPatients(),
             backgroundColor: colorScheme.primary,
-            foregroundColor: Colors.white,
+            foregroundColor: AppPalette.ink,
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -182,7 +183,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(AppPalette.ink),
                     ),
                   )
                 : const Icon(Icons.refresh, size: 24),

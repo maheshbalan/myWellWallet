@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -232,7 +233,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               SizedBox(height: 12),
               Text(
                 'If MyWellWallet is not in the list, return to the app and tap "Connect to Apple Health" again so the permission prompt appears, then check Settings again.',
-                style: TextStyle(height: 1.4, fontSize: 12, color: Color(0xFF64748B)),
+                style: TextStyle(height: 1.4, fontSize: 12, color: AppPalette.muted),
               ),
             ],
           ),
@@ -405,11 +406,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildSecuritySection() {
     return Card(
-      color: const Color(0xFFF5F3FF),
+      color: AppPalette.card,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: Color(0xFFE8E0F0)),
+        side: const BorderSide(color: AppPalette.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -422,17 +423,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8E0F0),
+                    color: AppPalette.border,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.lock_outline, size: 22, color: Color(0xFF7B1FA2)),
+                  child: const Icon(Icons.lock_outline, size: 22, color: AppPalette.gold),
                 ),
                 const SizedBox(width: 12),
                 Text(
                   'Login & security',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: const Color(0xFF1E293B),
+                        color: AppPalette.ink,
                       ),
                 ),
               ],
@@ -444,7 +445,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Text(
                     'Use biometric (Face ID / Touch ID)',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: const Color(0xFF1E293B)),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppPalette.ink),
                   ),
                   Switch.adaptive(
                     value: _biometricEnabled,
@@ -452,7 +453,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       await context.read<AuthProvider>().setBiometricEnabled(value);
                       if (mounted) setState(() => _biometricEnabled = value);
                     },
-                    activeColor: const Color(0xFF7B1FA2),
+                    activeColor: AppPalette.gold,
                   ),
                 ],
               ),
@@ -460,7 +461,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
             Text(
               _hasPin ? 'You can change your PIN or keep using biometric.' : 'Set a PIN to log in with a code (or use biometric).',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppPalette.muted),
             ),
             const SizedBox(height: 12),
             SizedBox(
@@ -470,8 +471,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icon(_hasPin ? Icons.lock_reset : Icons.pin_outlined, size: 20),
                 label: Text(_hasPin ? 'Change PIN' : 'Set PIN'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF7B1FA2),
-                  side: const BorderSide(color: Color(0xFF7B1FA2)),
+                  foregroundColor: AppPalette.gold,
+                  side: const BorderSide(color: AppPalette.gold),
                 ),
               ),
             ),
@@ -599,11 +600,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = authProvider.currentUser;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading: const AppBarLogo(showBackButton: false),
         title: const Text('Profile'),
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.cream,
         elevation: 0,
         actions: [
           if (!_isEditing)
@@ -629,11 +630,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             // Profile Header (light tint card)
             Card(
-              color: const Color(0xFFF5F3FF),
+              color: AppPalette.card,
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: Color(0xFFE8E0F0)),
+                side: const BorderSide(color: AppPalette.border),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(28.0),
@@ -643,7 +644,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       width: 72,
                       height: 72,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF7B1FA2),
+                        color: AppPalette.gold,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Center(
@@ -652,9 +653,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ? user!.name[0].toUpperCase()
                               : '?',
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: AppPalette.ink,
                             fontSize: 32,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
@@ -682,7 +683,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Text(
                               user?.email ?? '',
                               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: const Color(0xFF64748B),
+                                color: AppPalette.muted,
                               ),
                             ),
                           ],
@@ -753,7 +754,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             : '${_dateOfBirth!.year}-${_dateOfBirth!.month.toString().padLeft(2, '0')}-${_dateOfBirth!.day.toString().padLeft(2, '0')}',
                         style: TextStyle(
                           color: _dateOfBirth == null 
-                              ? const Color(0xFF64748B) 
+                              ? AppPalette.muted 
                               : Theme.of(context).textTheme.bodyLarge?.color,
                         ),
                       ),
@@ -830,7 +831,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text(
                         'Please check and input the correct name',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF64748B),
+                          color: AppPalette.muted,
                         ),
                         textAlign: TextAlign.center,
                       ),

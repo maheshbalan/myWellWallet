@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../theme/app_palette.dart';
 
 /// Bottom navigation bar with medical-themed iconography (design-reference style).
 /// Use on Home, Fetch Data, and Profile screens for consistent navigation.
@@ -20,17 +21,10 @@ class AppBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, -2),
-          ),
-        ],
+      decoration: const BoxDecoration(
+        color: AppPalette.cream,
+        border: Border(top: BorderSide(color: AppPalette.border)),
       ),
       child: SafeArea(
         child: Padding(
@@ -93,9 +87,9 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const selectedBg = Color(0xFFF3E5F5);
-    const selectedIcon = Color(0xFF7B1FA2);
-    const unselectedIcon = Color(0xFF94A3B8);
+    const selectedBg = AppPalette.goldSoft;
+    const selectedIcon = AppPalette.ink;
+    const unselectedIcon = AppPalette.muted;
     final color = selected ? selectedIcon : unselectedIcon;
     return InkWell(
       onTap: onTap,

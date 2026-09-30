@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_palette.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -45,11 +46,11 @@ class _HealthGlucoseScreenState extends State<HealthGlucoseScreen> {
   Widget build(BuildContext context) {
     if (!Platform.isIOS) return _buildUnsupported();
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppPalette.cream,
       appBar: AppBar(
         leading: const AppBarLogo(showBackButton: true),
         title: const Text('Blood glucose'),
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.cream,
         elevation: 0,
       ),
       body: _loading
@@ -68,28 +69,28 @@ class _HealthGlucoseScreenState extends State<HealthGlucoseScreen> {
                       final trend = value < 70 ? 'Low' : value > 180 ? 'High' : 'In range';
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
-                        color: const Color(0xFFF5F3FF),
+                        color: AppPalette.card,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
-                          side: const BorderSide(color: Color(0xFFE8E0F0)),
+                          side: const BorderSide(color: AppPalette.border),
                         ),
                         child: ListTile(
                           leading: Container(
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE3F2FD),
+                              color: AppPalette.creamWarm,
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(FontAwesomeIcons.droplet, color: Color(0xFF1976D2), size: 22),
+                            child: const Icon(FontAwesomeIcons.droplet, color: AppPalette.gold, size: 22),
                           ),
                           title: Text(
                             '${value.toStringAsFixed(0)} mg/dL',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 18,
-                              color: Color(0xFF1E293B),
+                              color: AppPalette.ink,
                             ),
                           ),
                           subtitle: Text(
@@ -125,7 +126,7 @@ class _HealthGlucoseScreenState extends State<HealthGlucoseScreen> {
             const SizedBox(height: 16),
             Text('No glucose data yet', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            Text('Connect Apple Health in Profile to sync CGM/meter readings.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B))),
+            Text('Connect Apple Health in Profile to sync CGM/meter readings.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppPalette.muted)),
           ],
         ),
       );
