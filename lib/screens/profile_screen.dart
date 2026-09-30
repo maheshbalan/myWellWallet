@@ -366,24 +366,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Row(
                 children: [
                   Expanded(
+                    flex: 2,
                     child: OutlinedButton.icon(
                       onPressed: _isSyncing ? null : _syncNow,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        minimumSize: const Size(0, 44),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                       icon: _isSyncing
                           ? const SizedBox(
-                              width: 18,
-                              height: 18,
+                              width: 16,
+                              height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.sync, size: 20),
-                      label: const Text('Sync now'),
+                          : const Icon(Icons.sync, size: 18),
+                      label: const Text('Sync now', maxLines: 1),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton.icon(
+                    flex: 3,
+                    child: ElevatedButton(
                       onPressed: () => context.go('/health'),
-                      icon: const Icon(FontAwesomeIcons.chartLine, size: 20),
-                      label: const Text('View Health'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        minimumSize: const Size(0, 44),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                      child: const Text('View Health', maxLines: 1),
                     ),
                   ),
                 ],
