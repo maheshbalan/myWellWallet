@@ -2,6 +2,8 @@
 
 Design only. No client credentials, tokens, or production access are part of this document.
 
+The call sequence, registered redirect URL, and iOS callback setup are in [ONEUP_HEALTH_TECHNICAL_DESIGN.md](ONEUP_HEALTH_TECHNICAL_DESIGN.md).
+
 Apple Health stays as it is. 1upHealth replaces the FHIR MCP server as the source of clinical and claims records.
 
 ## 1. What we are connecting to
