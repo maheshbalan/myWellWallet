@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:math';
 import '../models/user.dart';
 import '../services/database_service.dart';
+import '../services/oneup_token_store.dart';
 
 class AuthProvider with ChangeNotifier {
   final LocalAuthentication _localAuth = LocalAuthentication();
@@ -287,6 +288,7 @@ class AuthProvider with ChangeNotifier {
     try {
       // Clear all tables in database
       await _database.deleteAllData();
+      await OneUpTokenStore.instance.deleteAll();
       
       // Clear SharedPreferences
       final prefs = await SharedPreferences.getInstance();

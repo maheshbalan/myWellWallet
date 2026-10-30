@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 import '../models/user.dart';
 import '../models/fetch_status.dart';
+import 'sql_guard.dart';
 
 /// Database service for local persistence
 /// Stores user profiles and FHIR patient bundles
@@ -26,7 +27,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -54,7 +55,8 @@ class DatabaseService {
         fhir_bundle TEXT NOT NULL,
         last_synced TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        connection_id TEXT
       )
     ''');
 
@@ -68,6 +70,7 @@ class DatabaseService {
         resource_data TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+        connection_id TEXT,
         UNIQUE(patient_id, resource_type, resource_id)
       )
     ''');
@@ -93,6 +96,7 @@ class DatabaseService {
     await db.execute('CREATE INDEX idx_fetch_summaries_patient_id ON fetch_summaries(patient_id)');
 
     await _createHealthTables(db);
+    await _createOneUpTables(db);
   }
 
   Future<void> _createHealthTables(Database db) async {
@@ -179,6 +183,28 @@ class DatabaseService {
     await db.execute('CREATE INDEX idx_health_lab_results_user_recorded ON health_lab_results(user_id, recorded_at DESC)');
   }
 
+  Future<void> _createOneUpTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS oneup_connections (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        system_id TEXT,
+        authorize_url TEXT NOT NULL,
+        fhir_patient_id TEXT,
+        last_synced_at TEXT,
+        sync_interval_hours INTEGER NOT NULL DEFAULT 24,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_oneup_connections_user ON oneup_connections(user_id)',
+    );
+  }
+
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('''
@@ -219,6 +245,11 @@ class DatabaseService {
         )
       ''');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_health_lab_results_user_recorded ON health_lab_results(user_id, recorded_at DESC)');
+    }
+    if (oldVersion < 5) {
+      await db.execute('ALTER TABLE fhir_patients ADD COLUMN connection_id TEXT');
+      await db.execute('ALTER TABLE fhir_resources ADD COLUMN connection_id TEXT');
+      await _createOneUpTables(db);
     }
   }
 
@@ -309,7 +340,111 @@ class DatabaseService {
       await txn.delete('health_blood_pressure');
       await txn.delete('health_sync_settings');
       await txn.delete('health_lab_results');
+      await txn.delete('oneup_connections');
     });
+  }
+
+  /// Run a SELECT chosen by MedGemma. Writes are rejected by [SqlGuard].
+  Future<List<Map<String, dynamic>>> runReadOnlySelect(String sql) async {
+    final safe = SqlGuard.prepare(sql);
+    final db = await database;
+    final rows = await db.rawQuery(safe);
+    return [for (final row in rows) Map<String, dynamic>.from(row)];
+  }
+
+  Future<List<String>> listFhirPatientIds() async {
+    final db = await database;
+    final rows = await db.query('fhir_patients', columns: ['patient_id']);
+    return [
+      for (final row in rows)
+        if (row['patient_id'] is String) row['patient_id'] as String,
+    ];
+  }
+
+  /// Clinic rows of the given FHIR types. [oneUpOnly] keeps 1up-tagged rows;
+  /// otherwise those tagged rows are left out.
+  Future<List<Map<String, dynamic>>> fhirResourcesByTypes({
+    required List<String> resourceTypes,
+    required bool oneUpOnly,
+    bool laboratoryObservations = false,
+    int limit = 40,
+  }) async {
+    if (resourceTypes.isEmpty && !laboratoryObservations) return [];
+    final db = await database;
+    final args = <Object?>[];
+    final parts = <String>[];
+    if (resourceTypes.isNotEmpty) {
+      final marks = List.filled(resourceTypes.length, '?').join(', ');
+      parts.add('resource_type IN ($marks)');
+      args.addAll(resourceTypes);
+    }
+    if (laboratoryObservations) {
+      parts.add("(resource_type = 'Observation' AND resource_data LIKE '%laboratory%')");
+    }
+    var where = '(${parts.join(' OR ')})';
+    if (oneUpOnly) {
+      where += " AND resource_data LIKE ?";
+      args.add('%1up-patient-access%');
+    } else {
+      where += " AND resource_data NOT LIKE ?";
+      args.add('%1up-patient-access%');
+    }
+    args.add(limit);
+    final rows = await db.rawQuery(
+      'SELECT resource_data FROM fhir_resources WHERE $where ORDER BY updated_at DESC LIMIT ?',
+      args,
+    );
+    final decoded = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final raw = row['resource_data'];
+      if (raw is! String) continue;
+      try {
+        final value = jsonDecode(raw);
+        if (value is Map<String, dynamic>) {
+          decoded.add(value);
+        } else if (value is Map) {
+          decoded.add(Map<String, dynamic>.from(value));
+        }
+      } catch (_) {}
+    }
+    return decoded;
+  }
+
+  /// Observations and reports whose stored JSON mentions [needle].
+  /// [needle] must be a single alphanumeric token, not a free-form question.
+  Future<List<Map<String, dynamic>>> searchFhirByText({
+    required String needle,
+    required bool oneUpOnly,
+    int limit = 15,
+  }) async {
+    if (!RegExp(r'^[A-Za-z0-9]{3,40}$').hasMatch(needle)) return [];
+    final db = await database;
+    final args = <Object?>['%$needle%', limit];
+    var where =
+        "resource_type IN ('Observation', 'DiagnosticReport') AND resource_data LIKE ?";
+    if (oneUpOnly) {
+      where += " AND resource_data LIKE '%1up-patient-access%'";
+    } else {
+      where += " AND resource_data NOT LIKE '%1up-patient-access%'";
+    }
+    final rows = await db.rawQuery(
+      'SELECT resource_data FROM fhir_resources WHERE $where ORDER BY updated_at DESC LIMIT ?',
+      args,
+    );
+    final decoded = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final raw = row['resource_data'];
+      if (raw is! String) continue;
+      try {
+        final value = jsonDecode(raw);
+        if (value is Map<String, dynamic>) {
+          decoded.add(value);
+        } else if (value is Map) {
+          decoded.add(Map<String, dynamic>.from(value));
+        }
+      } catch (_) {}
+    }
+    return decoded;
   }
 
   // ========== FHIR Patient Bundle Methods ==========
@@ -319,6 +454,7 @@ class DatabaseService {
     required String patientId,
     required String patientName,
     required Map<String, dynamic> fhirBundle,
+    String? connectionId,
   }) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
@@ -333,6 +469,7 @@ class DatabaseService {
         'last_synced': now,
         'created_at': now,
         'updated_at': now,
+        'connection_id': connectionId,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -701,7 +838,7 @@ class DatabaseService {
       'health_steps',
       where: 'user_id = ?',
       whereArgs: [userId],
-      orderBy: 'created_at DESC',
+      orderBy: 'start_at DESC',
       limit: limit,
     );
     return maps.map((m) => {
@@ -871,6 +1008,132 @@ class DatabaseService {
       'specimen_type': m['specimen_type'] as String?,
       'recorded_at': DateTime.parse(m['recorded_at'] as String),
     }).toList();
+  }
+
+  Future<void> upsertOneUpConnection({
+    required String id,
+    required String userId,
+    required String displayName,
+    required String kind,
+    required String authorizeUrl,
+    required int syncIntervalHours,
+    required String status,
+    String? systemId,
+    String? fhirPatientId,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final existing = await getOneUpConnection(id);
+    await db.insert(
+      'oneup_connections',
+      {
+        'id': id,
+        'user_id': userId,
+        'display_name': displayName,
+        'kind': kind,
+        'system_id': systemId ?? existing?['system_id'],
+        'authorize_url': authorizeUrl,
+        'fhir_patient_id': fhirPatientId ?? existing?['fhir_patient_id'],
+        'last_synced_at': existing?['last_synced_at'],
+        'sync_interval_hours': syncIntervalHours,
+        'status': status,
+        'created_at': existing?['created_at'] ?? now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, Object?>?> getOneUpConnection(String id) async {
+    final db = await database;
+    final rows = await db.query(
+      'oneup_connections',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<List<Map<String, Object?>>> listOneUpConnections(String userId) async {
+    final db = await database;
+    return db.query(
+      'oneup_connections',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'created_at ASC',
+    );
+  }
+
+  Future<void> updateOneUpStatus(
+    String id, {
+    required String status,
+    String? fhirPatientId,
+    DateTime? lastSyncedAt,
+  }) async {
+    final db = await database;
+    await db.update(
+      'oneup_connections',
+      {
+        'status': status,
+        'updated_at': DateTime.now().toIso8601String(),
+        if (fhirPatientId != null) 'fhir_patient_id': fhirPatientId,
+        if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt.toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> updateOneUpInterval(String id, int hours) async {
+    final db = await database;
+    await db.update(
+      'oneup_connections',
+      {
+        'sync_interval_hours': hours,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Replace one resource type for this connection. Other connections stay.
+  Future<void> replaceConnectionResources({
+    required String connectionId,
+    required String patientId,
+    required String resourceType,
+    required List<Map<String, dynamic>> resources,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    await db.transaction((txn) async {
+      await txn.delete(
+        'fhir_resources',
+        where: 'connection_id = ? AND resource_type = ?',
+        whereArgs: [connectionId, resourceType],
+      );
+      for (final resource in resources) {
+        final resourceId = resource['id'];
+        if (resourceId is! String || resourceId.isEmpty) continue;
+        final type = resource['resourceType'] as String? ?? resourceType;
+        await txn.insert(
+          'fhir_resources',
+          {
+            'id': '${patientId}_${type}_${resourceId}_$connectionId',
+            'patient_id': patientId,
+            'resource_type': type,
+            'resource_id': resourceId,
+            'resource_data': jsonEncode(resource),
+            'created_at': now,
+            'updated_at': now,
+            'connection_id': connectionId,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
   }
 
   /// Close database

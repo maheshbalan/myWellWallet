@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'local_rag_service.dart';
 import 'gemma_model_service.dart';
 import 'log_service.dart';
 import 'prompt_sanitizer.dart';
@@ -18,8 +17,6 @@ class GemmaService {
       '\n\n_(response truncated — the model took too long; try rephrasing)_';
 
   final List<Map<String, String>> _conversationHistory = [];
-  final LocalRAGService _ragService = LocalRAGService();
-  bool _ragInitialized = false;
   final int? _promptBudgetOverride;
   final Duration _streamTimeout;
 
@@ -38,15 +35,6 @@ class GemmaService {
     _conversationHistory.add({'role': role, 'content': message});
     // Keep only last 10 turns to avoid hitting token limits
     if (_conversationHistory.length > 10) _conversationHistory.removeAt(0);
-  }
-
-  Future<Map<String, dynamic>> interpretQueryWithContext(String query, {String? patientId}) async {
-    if (!_ragInitialized) {
-      await _ragService.initialize();
-      _ragInitialized = true;
-    }
-    final contextChunks = await _ragService.retrieveContext(query);
-    return _interpretWithRAGContext(query, contextChunks, patientId);
   }
 
   Stream<String> generateStreamingResponse(String query, Map<String, dynamic>? fhirData) async* {
@@ -320,7 +308,8 @@ Instructions:
 2. List every record individually; do not group or summarize across records.
 3. If there is only one record, still use the bullet format and note it is the only one on file.
 4. Use a professional and supportive medical tone.
-5. Do not mention being an AI.$glucoseHint'''
+5. Do not mention being an AI.
+6. These rows are this patient's records from this phone. Quote the names, values, units, and dates. Do not say you lack access to their personal records.$glucoseHint'''
         : '''Instructions:
 1. Summarize ONLY the records provided above.
 2. If the records are Immunizations, focus on vaccines and dates.
@@ -329,7 +318,8 @@ Instructions:
 5. If the records are Conditions, focus on the diagnosis and status.
 6. Mention specific names, values, and dates found in the data.
 7. Use a professional and supportive medical tone.
-8. Be concise and do not mention being an AI.$glucoseHint''';
+8. Be concise and do not mention being an AI.
+9. These rows are this patient's records from this phone. Quote the names, values, units, and dates. Do not say you lack access to their personal records.$glucoseHint''';
 
     final recordLines = summary.map((s) => jsonEncode(s)).toList();
 
@@ -368,18 +358,6 @@ $instructions
 
   void clearContext() {
     _conversationHistory.clear();
-  }
-
-  Map<String, dynamic> _interpretWithRAGContext(String query, List<String> contextChunks, String? patientId) {
-    final lower = query.toLowerCase();
-    String resource = 'Observation';
-    if (lower.contains('visit') || lower.contains('encounter')) resource = 'Encounter';
-    if (lower.contains('med') || lower.contains('drug')) resource = 'MedicationStatement';
-    return {
-      'queryType': 'local',
-      'localQuery': {'resourceType': resource, 'filters': {'limit': 10}},
-      'intent': 'list_data'
-    };
   }
 
   /// Recursively finds a list of resources/entries in a nested map
@@ -537,6 +515,14 @@ $instructions
         } else if (type == 'Condition') {
           item['Condition'] = res['code']?['text'] ?? res['code']?['coding']?[0]?['display'] ?? 'Diagnosis';
           item['Status'] = res['clinicalStatus']?['coding']?[0]?['code'] ?? res['clinicalStatus']?['text'] ?? 'Active';
+        } else if (res['name'] != null ||
+            res['value_numeric'] != null ||
+            res['value_real'] != null) {
+          item['Test'] = (res['name'] ?? 'Reading').toString();
+          final value = res['value_numeric'] ?? res['value_real'] ?? res['value_string'] ?? '';
+          item['Result'] = '$value ${res['unit'] ?? ''}'.trim();
+          final recorded = res['recorded_at'] ?? res['start_at'];
+          if (recorded != null) item['Date'] = _formatDateString(recorded);
         } else {
           item['Details'] = res['id'] ?? 'N/A';
         }

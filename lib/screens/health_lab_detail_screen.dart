@@ -9,6 +9,9 @@ import '../providers/auth_provider.dart';
 import '../services/database_service.dart';
 import '../widgets/app_bar_logo.dart';
 import '../widgets/app_bottom_nav.dart';
+import '../widgets/vital_trend_chart.dart';
+
+enum _LabView { table, graph }
 
 /// Passed via [GoRouteState.extra] for lab drill-down.
 class HealthLabDetailArgs {
@@ -35,6 +38,7 @@ class _HealthLabDetailScreenState extends State<HealthLabDetailScreen> {
   final _db = DatabaseService();
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
+  _LabView _view = _LabView.table;
 
   @override
   void initState() {
@@ -151,9 +155,41 @@ class _HealthLabDetailScreenState extends State<HealthLabDetailScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _rows.isEmpty
               ? const Center(child: Text('No history rows for this label yet.'))
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: LayoutBuilder(builder: (_, constraints) {
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                      child: SegmentedButton<_LabView>(
+                        segments: const [
+                          ButtonSegment(value: _LabView.table, label: Text('Table')),
+                          ButtonSegment(value: _LabView.graph, label: Text('Last 10')),
+                        ],
+                        selected: {_view},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (selected) => setState(() => _view = selected.first),
+                        style: ButtonStyle(
+                          backgroundColor: WidgetStateProperty.resolveWith((states) {
+                            if (states.contains(WidgetState.selected)) return AppPalette.goldSoft;
+                            return AppPalette.card;
+                          }),
+                          foregroundColor: const WidgetStatePropertyAll(AppPalette.ink),
+                          side: const WidgetStatePropertyAll(BorderSide(color: AppPalette.border)),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: _view == _LabView.table ? _table(dateFmt) : _graph(),
+                    ),
+                  ],
+                ),
+      bottomNavigationBar: const AppBottomNav(currentPath: '/health'),
+    );
+  }
+
+  Widget _table(DateFormat dateFmt) {
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: LayoutBuilder(builder: (_, constraints) {
                     final wide = constraints.maxWidth;
                     final tableWidth =
                         wide < 720 ? 720.0 : wide;
@@ -283,9 +319,76 @@ class _HealthLabDetailScreenState extends State<HealthLabDetailScreen> {
                       ),
                     );
                   }),
-                ),
-      bottomNavigationBar: const AppBottomNav(currentPath: '/health'),
     );
+  }
+
+  Widget _graph() {
+    final numeric = <Map<String, dynamic>>[];
+    for (final row in _rows) {
+      if (_numericValue(row) == null) continue;
+      numeric.add(row);
+      if (numeric.length == 10) break;
+    }
+    final chronological = numeric.reversed.toList();
+    final points = [
+      for (final row in chronological)
+        VitalPoint(row['recorded_at'] as DateTime, _numericValue(row)!),
+    ];
+    final stats = VitalStats.from(points.map((point) => point.value));
+    final low = chronological.isEmpty ? null : chronological.last['reference_range_low'];
+    final high = chronological.isEmpty ? null : chronological.last['reference_range_high'];
+    final unit = chronological.isEmpty ? null : chronological.last['unit'] as String?;
+    String format(double value) {
+      if (value.abs() >= 100 || value == value.roundToDouble()) return value.round().toString();
+      return value.toStringAsFixed(value.abs() >= 10 ? 1 : 2);
+    }
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          const Text(
+            'Last 10 results',
+            style: TextStyle(color: AppPalette.muted, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          if (points.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 48),
+              child: Text(
+                'These results are not numbers, so they stay in the table.',
+                style: TextStyle(color: AppPalette.muted),
+              ),
+            )
+          else ...[
+            VitalTrendChart(
+              points: points,
+              average: stats.average,
+              lowBound: low is num ? low.toDouble() : null,
+              highBound: high is num ? high.toDouble() : null,
+            ),
+            if (stats.average != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Average of these results: ${format(stats.average!)}${unit == null || unit.isEmpty ? '' : ' $unit'}',
+                  style: const TextStyle(color: AppPalette.ink, fontWeight: FontWeight.w700),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  double? _numericValue(Map<String, dynamic> row) {
+    final numeric = row['value_numeric'];
+    if (numeric is num) return numeric.toDouble();
+    final text = row['value_string'];
+    if (text is String) return double.tryParse(text);
+    return null;
   }
 
   Widget _unsupported() {

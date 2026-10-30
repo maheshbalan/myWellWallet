@@ -9,9 +9,10 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'services/mcp_client.dart';
 import 'services/database_service.dart';
-import 'services/local_query_service.dart';
 import 'services/gemma_rag_service.dart';
 import 'services/log_service.dart';
+import 'services/clinical_source_store.dart';
+import 'services/oneup_sync_service.dart';
 import 'providers/patient_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/query_provider.dart';
@@ -28,6 +29,7 @@ import 'screens/health_heart_rate_screen.dart';
 import 'screens/health_steps_screen.dart';
 import 'screens/health_blood_pressure_screen.dart';
 import 'screens/health_lab_results_screen.dart';
+import 'screens/health_diabetes_screen.dart';
 import 'screens/health_lab_detail_screen.dart';
 import 'screens/log_viewer_screen.dart';
 import 'test/mcp_sse_test_screen.dart';
@@ -122,18 +124,19 @@ class MyWellWalletApp extends StatefulWidget {
   State<MyWellWalletApp> createState() => _MyWellWalletAppState();
 }
 
-class _MyWellWalletAppState extends State<MyWellWalletApp> {
+class _MyWellWalletAppState extends State<MyWellWalletApp> with WidgetsBindingObserver {
   late final MCPClient _mcpClient;
   late final AuthProvider _authProvider;
   late final DatabaseService _databaseService;
-  late final LocalQueryService _localQueryService;
   late final GemmaRAGService _gemmaRAGService;
   late final PatientProvider _patientProvider;
+  final ClinicalSourceStore _clinicalSource = ClinicalSourceStore.instance;
   bool _isCoreReady = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _mcpClient = MCPClient(
       baseUrl: AppConfig.mcpBaseUrl,
@@ -142,23 +145,42 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
 
     _authProvider = AuthProvider();
     _databaseService = DatabaseService();
-    _localQueryService = LocalQueryService(databaseService: _databaseService);
-    _gemmaRAGService = GemmaRAGService(
-      queryService: _localQueryService,
-      databaseService: _databaseService,
-    );
+    _gemmaRAGService = GemmaRAGService(databaseService: _databaseService);
     _patientProvider = PatientProvider(mcpClient: _mcpClient);
 
-    // Kick off initialization
     unawaited(_safeInit());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncOneUpIfDue());
+    }
+  }
+
+  Future<void> _syncOneUpIfDue() async {
+    await _clinicalSource.ensureLoaded();
+    if (!_clinicalSource.usesOneUp) return;
+    final user = _authProvider.currentUser;
+    if (user == null) return;
+    await OneUpSyncService(database: _databaseService).syncIfDue(user.id);
   }
 
   Future<void> _safeInit() async {
     try {
-      // 1. Initialize MCP
-      await _mcpClient.initialize();
+      await _clinicalSource.ensureLoaded();
 
-      // 2. Initialize RAG
+      // MCP starts only when that source is selected. 1up syncs from Profile.
+      if (_clinicalSource.usesMcp) {
+        await _mcpClient.initialize();
+      }
+
       await _gemmaRAGService.initialize();
 
       // Model download/verify is kicked off at login (see login_screen /
@@ -174,7 +196,7 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
 
       // 5. Establish patient context if user exists
       final userExists = await _authProvider.userExists();
-      if (userExists) {
+      if (userExists && _clinicalSource.usesMcp) {
         final users = await _databaseService.getAllUsers();
         if (users.isNotEmpty) {
           final user = users.first;
@@ -335,18 +357,19 @@ class _MyWellWalletAppState extends State<MyWellWalletApp> {
           value: _authProvider,
         ),
         ChangeNotifierProvider.value(
+          value: _clinicalSource,
+        ),
+        ChangeNotifierProvider.value(
           value: _patientProvider,
         ),
         ChangeNotifierProxyProvider2<PatientProvider, AuthProvider, QueryProvider>(
           create: (_) {
             final queryProvider = QueryProvider(mcpClient: _mcpClient);
-            queryProvider.setLocalQueryService(_localQueryService);
             queryProvider.setGemmaRAGService(_gemmaRAGService);
             return queryProvider;
           },
           update: (_, patientProvider, authProvider, previous) {
             previous ??= QueryProvider(mcpClient: _mcpClient);
-            previous.setLocalQueryService(_localQueryService);
             previous.setGemmaRAGService(_gemmaRAGService);
             previous.setPatientProvider(patientProvider);
             previous.setAuthProvider(authProvider);
@@ -384,6 +407,11 @@ final GoRouter _router = GoRouter(
         state.uri.path != '/login' && 
         state.uri.path != '/register') {
       return '/login';
+    }
+
+    if (state.uri.path == '/fetch-data') {
+      await ClinicalSourceStore.instance.ensureLoaded();
+      if (!ClinicalSourceStore.instance.showsFetchData) return '/';
     }
     
     return null;
@@ -455,6 +483,10 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/health/lab-results',
       builder: (context, state) => const HealthLabResultsScreen(),
+    ),
+    GoRoute(
+      path: '/health/lab-results/diabetes',
+      builder: (context, state) => const HealthDiabetesScreen(),
     ),
     GoRoute(
       path: '/health/lab-results/detail',

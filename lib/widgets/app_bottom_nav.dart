@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../services/clinical_source_store.dart';
 import '../theme/app_palette.dart';
 
 /// Bottom navigation bar with medical-themed iconography (design-reference style).
@@ -12,15 +14,17 @@ class AppBottomNav extends StatelessWidget {
 
   final String currentPath;
 
-  int get _selectedIndex {
-    if (currentPath == '/profile') return 3;
-    if (currentPath.startsWith('/health')) return 2;
-    if (currentPath == '/fetch-data') return 1;
+  int _selectedIndex(bool showFetchData) {
+    if (currentPath == '/profile') return showFetchData ? 3 : 2;
+    if (currentPath.startsWith('/health')) return showFetchData ? 2 : 1;
+    if (showFetchData && currentPath == '/fetch-data') return 1;
     return 0;
   }
 
   @override
   Widget build(BuildContext context) {
+    final showFetchData = context.watch<ClinicalSourceStore>().showsFetchData;
+    final selected = _selectedIndex(showFetchData);
     return Container(
       decoration: const BoxDecoration(
         color: AppPalette.cream,
@@ -35,33 +39,34 @@ class AppBottomNav extends StatelessWidget {
               _NavItem(
                 icon: Icons.medical_services_outlined,
                 label: 'Home',
-                selected: _selectedIndex == 0,
+                selected: selected == 0,
                 onTap: () {
-                  if (_selectedIndex != 0) context.go('/');
+                  if (selected != 0) context.go('/');
                 },
               ),
-              _NavItem(
-                icon: Icons.download_for_offline_outlined,
-                label: 'Fetch Data',
-                selected: _selectedIndex == 1,
-                onTap: () {
-                  if (_selectedIndex != 1) context.go('/fetch-data');
-                },
-              ),
+              if (showFetchData)
+                _NavItem(
+                  icon: Icons.download_for_offline_outlined,
+                  label: 'Fetch Data',
+                  selected: selected == 1,
+                  onTap: () {
+                    if (selected != 1) context.go('/fetch-data');
+                  },
+                ),
               _NavItem(
                 icon: Icons.favorite_border,
                 label: 'Health',
-                selected: _selectedIndex == 2,
+                selected: selected == (showFetchData ? 2 : 1),
                 onTap: () {
-                  if (_selectedIndex != 2) context.go('/health');
+                  if (selected != (showFetchData ? 2 : 1)) context.go('/health');
                 },
               ),
               _NavItem(
                 icon: Icons.person_outline,
                 label: 'Profile',
-                selected: _selectedIndex == 3,
+                selected: selected == (showFetchData ? 3 : 2),
                 onTap: () {
-                  if (_selectedIndex != 3) context.go('/profile');
+                  if (selected != (showFetchData ? 3 : 2)) context.go('/profile');
                 },
               ),
             ],

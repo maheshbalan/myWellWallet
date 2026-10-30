@@ -7,6 +7,8 @@ fixtures/test_database_export/dify_export/
 
 # Miscellaneous
 .env
+# 1up sandbox client id and secret. Copy config/oneup_local.example.json.
+config/oneup_local.json
 *.claude/
 *.class
 *.log

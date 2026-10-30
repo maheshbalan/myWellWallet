@@ -14,6 +14,7 @@ import '../widgets/info_section.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/app_bar_logo.dart';
 import '../services/apple_health_service.dart';
+import '../widgets/clinical_records_section.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -851,6 +852,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
+
+            const SizedBox(height: 24),
+            const ClinicalRecordsSection(),
 
             if (Platform.isIOS) ...[
               const SizedBox(height: 24),

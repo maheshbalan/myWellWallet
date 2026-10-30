@@ -2,9 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../services/mcp_client.dart';
 import '../services/nlp_service.dart';
 import '../services/gemma_service.dart';
-import '../services/local_query_service.dart';
 import '../services/gemma_rag_service.dart';
-import '../services/data_sync_service.dart';
 import '../services/log_service.dart';
 import 'auth_provider.dart';
 import 'patient_provider.dart';
@@ -14,7 +12,6 @@ class QueryProvider with ChangeNotifier {
   final MCPClient mcpClient;
   final NLPService nlpService = NLPService();
   final GemmaService gemmaService = GemmaService();
-  LocalQueryService? _localQueryService;
   GemmaRAGService? _gemmaRAGService;
   PatientProvider? _patientProvider;
   AuthProvider? _authProvider;
@@ -28,10 +25,6 @@ class QueryProvider with ChangeNotifier {
 
   QueryProvider({required this.mcpClient});
 
-  void setLocalQueryService(LocalQueryService service) {
-    _localQueryService = service;
-  }
-  
   void setGemmaRAGService(GemmaRAGService service) {
     _gemmaRAGService = service;
   }
@@ -80,119 +73,69 @@ class QueryProvider with ChangeNotifier {
         LogService.log('QueryProvider: Using patient context ID: $_currentPatientId');
       }
       
-      if (_currentPatientId == null) {
-        LogService.log('QueryProvider: ERROR - No patient context ID!');
-        throw Exception('Patient ID not available. Please ensure you are logged in and patient context is established.');
+      final userId = _authProvider?.currentUser?.id;
+      if ((userId == null || userId.isEmpty) && _currentPatientId == null) {
+        throw Exception('Sign in before asking about your records.');
       }
 
-      // Use the advanced GemmaRAGService if available
-      if (_gemmaRAGService != null) {
-        LogService.log('QueryProvider: Calling GemmaRAGService.processQuery...');
-        final ragResult = await _gemmaRAGService!.processQuery(query, _currentPatientId);
-        LogService.log('QueryProvider: RAG result type: ${ragResult['type']}');
-        
-        if (ragResult['type'] == 'clarification') {
+      if (_gemmaRAGService == null) {
+        throw Exception('The on-device model is not available.');
+      }
+
+      LogService.log('QueryProvider: Asking MedGemma for a SQLite read...');
+      final ragResult = await _gemmaRAGService!.processQuery(query, userId: userId);
+      LogService.log('QueryProvider: RAG result type: ${ragResult['type']}');
+
+      if (ragResult['type'] == 'clarification' || ragResult['type'] == 'message') {
+        final text = (ragResult['question'] ?? ragResult['message'] ?? 'I need a bit more information.') as String;
+        _lastResult = {
+          'source': 'rag',
+          'type': ragResult['type'],
+          'markdown': text,
+        };
+        _error = null;
+        return;
+      }
+
+      if (ragResult['type'] == 'rows') {
+        _lastResult = {
+          'source': 'local',
+          'type': 'success',
+          'count': ragResult['count'],
+          'resources': ragResult['resources'],
+        };
+        _error = null;
+        return;
+      }
+
+      if (ragResult['type'] == 'sql') {
+        final sql = ragResult['sql'] as String;
+        final executionResult = await _gemmaRAGService!.executeSql(sql);
+        if (executionResult['type'] == 'success') {
           _lastResult = {
-            'source': 'rag',
-            'type': 'clarification',
-            'question': ragResult['question'],
-            'options': ragResult['options'],
-            'markdown': '### I need a bit more information\n\n${ragResult['question']}',
+            'source': 'local',
+            'type': 'success',
+            'count': executionResult['count'],
+            'resources': executionResult['resources'],
           };
           _error = null;
           return;
         }
+        _lastResult = {
+          'source': 'local',
+          'type': executionResult['type'],
+          'markdown': executionResult['message'] ?? 'No records found matching your request.',
+        };
+        _error = null;
+        return;
+      }
 
-        if (ragResult['type'] == 'queryPlan') {
-          final queryPlan = ragResult['queryPlan'] as Map<String, dynamic>;
-          LogService.log('QueryProvider: Executing query plan for ${queryPlan['resourceType']}');
-          final executionResult = await _gemmaRAGService!.executeQueryPlan(
-            queryPlan,
-            _currentPatientId!,
-            appUserId: _authProvider?.currentUser?.id,
-          );
-          LogService.log('QueryProvider: Execution result type: ${executionResult['type']}');
-          
-          if (executionResult['type'] == 'success') {
-            _lastResult = {
-              'source': 'local',
-              'type': 'success',
-              'resourceType': queryPlan['resourceType'],
-              'count': executionResult['count'],
-              'resources': executionResult['resources'],
-            };
-            _error = null;
-            return;
-          }
- else if (executionResult['type'] == 'fallbackToMCP') {
-            LogService.log('QueryProvider: No local data, falling back to MCP Gateway...');
-            // Fallback to MCP query logic
-            await _fallbackToMCP(query, queryPlan);
-            return;
-          } else {
-            LogService.log('QueryProvider: No results from local execution.');
-            // No results or error from execution
-            _lastResult = {
-              'source': 'local',
-              'type': 'noResults',
-              'markdown': executionResult['message'] ?? 'No records found matching your request.',
-            };
-            _error = null;
-            return;
-          }
-        }
-      }
-      
-      LogService.log('QueryProvider: Falling back to simple interpretation...');
-      // Fallback to simpler GemmaService if RAG failed or not available
-      final interpretation = await gemmaService.interpretQueryWithContext(
-        query,
-        patientId: _currentPatientId,
-      );
-      
-      final queryType = interpretation['queryType'] as String? ?? 'mcp';
-      LogService.log('QueryProvider: Simple interpretation type: $queryType');
-      final localQuery = interpretation['localQuery'] as Map<String, dynamic>?;
-      
-      // Try local database first
-      if ((queryType == 'local' || queryType == 'both') && 
-          localQuery != null && 
-          _localQueryService != null) {
-        final resourceType = localQuery['resourceType'] as String?;
-        final filters = localQuery['filters'] as Map<String, dynamic>?;
-        
-        if (resourceType != null) {
-          final recordIndex = localQuery['recordIndex'] as int?;
-          LogService.log('QueryProvider: Querying local DB for $resourceType');
-          final localResources = await _localQueryService!.queryLocal(
-            _currentPatientId!,
-            resourceType,
-            filters: filters,
-            recordIndex: recordIndex,
-            appUserId: _authProvider?.currentUser?.id,
-            queryPlan: localQuery,
-          );
-          
-          if (localResources.isNotEmpty) {
-            LogService.log('QueryProvider: Found ${localResources.length} local resources');
-            final markdown = _localQueryService!.formatAsMarkdown(localResources, resourceType);
-            _lastResult = {
-              'source': 'local',
-              'resourceType': resourceType,
-              'count': localResources.length,
-              'resources': localResources,
-              'markdown': markdown,
-            };
-            _error = null;
-            return;
-          }
-        }
-      }
-      
-      LogService.log('QueryProvider: Final fallback to MCP Gateway...');
-      // Final fallback to MCP Gateway
-      await _fallbackToMCP(query, interpretation['mcpQuery']);
-      
+      _lastResult = {
+        'source': 'rag',
+        'type': 'message',
+        'markdown': 'I could not query the records on this phone.',
+      };
+      _error = null;
     } catch (e) {
       LogService.log('QueryProvider CRITICAL ERROR: $e');
       _error = 'Failed to process query: $e';
@@ -200,60 +143,6 @@ class QueryProvider with ChangeNotifier {
     } finally {
       _isProcessing = false;
       notifyListeners();
-    }
-  }
-
-  Future<void> _fallbackToMCP(String query, Map<String, dynamic>? queryPlan) async {
-    try {
-      final resourceType = queryPlan?['resourceType'] as String?;
-      if (resourceType == null) {
-        throw Exception('Cannot fallback to MCP: No resourceType in query plan');
-      }
-
-      // 1. Determine correct tool name (shared with DataSyncService so naming
-      // stays consistent across the sync path and the chat-fallback path).
-      final toolName = DataSyncService.toolFor(resourceType);
-
-      // 2. Determine correct search parameter name (subject vs patient).
-      final filterName = DataSyncService.searchParamFor(resourceType);
-
-      // 3. Build path with filters
-      final filters = queryPlan?['filters'] as Map<String, dynamic>?;
-      String path = '/$resourceType?$filterName=Patient/$_currentPatientId';
-      if (filters != null) {
-        filters.forEach((key, value) {
-          if (!key.startsWith('_') && key != filterName) {
-            path += '&$key=$value';
-          }
-        });
-        // Add sorting if specified
-        if (filters.containsKey('_sort')) {
-          path += '&_sort=${filters['_sort']}';
-        }
-        if (filters.containsKey('_count')) {
-          path += '&_count=${filters['_count']}';
-        }
-      }
-
-      LogService.log('QueryProvider: Calling MCP tool $toolName with path $path');
-      
-      final result = await mcpClient.callTool(toolName, {
-        'request': {
-          'method': 'GET',
-          'path': path,
-        }
-      });
-      
-      _lastResult = {
-        'source': 'mcp',
-        'result': result,
-      };
-      _error = null;
-    } catch (e) {
-      LogService.log('QueryProvider: MCP Fallback error: $e');
-      _error = 'Local data not found and server query failed: $e';
-      _lastResult = null;
-      rethrow;
     }
   }
 

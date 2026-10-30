@@ -347,11 +347,12 @@ Per-user Health sync preferences and last sync timestamps.
 
 ### Unified query semantics (for MedGemma / RAG)
 
-- The **LLM query plan** should stay **FHIR-oriented** (`resourceType`, `filters`, optional `dataSources`).
-- The **executor** merges:
-  - rows from `fhir_resources` for the current **`patient_id`**, and
-  - when enabled, **synthetic FHIR Observation** maps built from `health_*` for the current **`user_id`** linked to that patient context.
-- Every merged item carries **provenance** (`meta.source` / `meta.tag`) so answers can distinguish **clinic record** vs **Apple Health**.
+MedGemma writes one `SELECT` from this schema. The app runs that statement if it is a single read against the tables above. It does not map the question onto a preset resource type.
+
+- Device vitals are the `health_*` tables, filtered by `users.id`.
+- Clinic rows are `fhir_resources.resource_data` (FHIR JSON), filtered by `patient_id`.
+- When the Profile source is 1up, those JSON rows are tagged `1up-patient-access`. When the source is the FHIR MCP server, 1up-tagged rows are left out of the answer.
+- `oneup_connections` stores the plan name and sync status. Tokens are not in SQLite.
 
 ### SQL examples (Apple tables only)
 

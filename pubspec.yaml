@@ -1,7 +1,7 @@
 name: mywellwallet
 description: MyWellWallet - A Flutter app for managing health records via FHIR MCP Server
 publish_to: 'none'
-version: 1.4.0+2
+version: 1.5.0+3
 
 environment:
   sdk: '>=3.8.0 <4.0.0'
@@ -59,6 +59,10 @@ dependencies:
   # On-device LLM runtime (GGUF) for MedGemma 4B
   llamadart: ^0.6.4
   background_downloader: ^9.5.4
+
+  # 1up Patient Access: system browser sign-in and Keychain tokens
+  flutter_web_auth_2: ^4.1.0
+  flutter_secure_storage: ^9.2.4
 
 dev_dependencies:
   flutter_test:

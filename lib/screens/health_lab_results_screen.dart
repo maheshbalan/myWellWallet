@@ -9,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../services/database_service.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/app_bar_logo.dart';
+import '../widgets/health_search_bar.dart';
 import 'health_lab_detail_screen.dart';
 
 /// Blood tests from Clinical Health Records (FHIR labs, e.g. Sonora Quest) + persisted rows.
@@ -22,6 +23,7 @@ class HealthLabResultsScreen extends StatefulWidget {
 
 class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
   final _db = DatabaseService();
+  final _search = TextEditingController();
   List<Map<String, dynamic>> _latest = [];
   Map<String, int> _counts = {};
   bool _loading = true;
@@ -29,7 +31,14 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
   @override
   void initState() {
     super.initState();
+    _search.addListener(() => setState(() {}));
     _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -90,37 +99,98 @@ class _HealthLabResultsScreenState extends State<HealthLabResultsScreen> {
         backgroundColor: AppPalette.cream,
         elevation: 0,
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _latest.isEmpty
-              ? _buildEmpty(context)
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      body: Column(
+        children: [
+          HealthSearchBar(
+            controller: _search,
+            hint: 'Search a test, or tap the mic',
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Material(
+              color: AppPalette.card,
+              borderRadius: BorderRadius.circular(18),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () => context.push('/health/lab-results/diabetes'),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AppPalette.border),
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: const Row(
                     children: [
-                      Text(
-                        'Latest value per test',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: AppPalette.muted,
+                      Icon(Icons.monitor_heart_outlined, color: AppPalette.ink),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Diabetic health',
+                              style: TextStyle(fontWeight: FontWeight.w700, color: AppPalette.ink),
                             ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Tap a test below to open up to twelve recent draws in a '
-                        'compact table—with reference-range flags and comparison to '
-                        'the prior reading.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppPalette.hint,
+                            SizedBox(height: 2),
+                            Text(
+                              'A1C, glucose, kidney, cholesterol, and blood pressure',
+                              style: TextStyle(color: AppPalette.muted, fontSize: 13),
                             ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      ..._latest.map((r) => _labCard(context, r)),
+                      Icon(Icons.chevron_right, color: AppPalette.hint),
                     ],
                   ),
                 ),
+              ),
+            ),
+          ),
+          Expanded(child: _resultsBody(context)),
+        ],
+      ),
       bottomNavigationBar: const AppBottomNav(currentPath: '/health'),
+    );
+  }
+
+  bool _matches(Map<String, dynamic> r) {
+    final q = _search.text.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    final hay = '${r['name']} ${r['loinc_code'] ?? ''} ${r['source_name'] ?? ''} ${_formatValue(r)}'
+        .toLowerCase();
+    return q.split(RegExp(r'\s+')).every(hay.contains);
+  }
+
+  Widget _resultsBody(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_latest.isEmpty) return _buildEmpty(context);
+    final shown = _latest.where(_matches).toList();
+    if (shown.isEmpty) {
+      return const Center(
+        child: Text('No tests match that search.', style: TextStyle(color: AppPalette.muted)),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          Text(
+            'Latest value per test',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppPalette.muted),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tap a test below to open up to twelve recent draws in a '
+            'compact table—with reference-range flags and comparison to '
+            'the prior reading.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppPalette.hint),
+          ),
+          const SizedBox(height: 16),
+          ...shown.map((r) => _labCard(context, r)),
+        ],
+      ),
     );
   }
 

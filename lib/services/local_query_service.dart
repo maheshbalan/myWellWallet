@@ -367,9 +367,7 @@ class LocalQueryService {
     return out;
   }
   
-  // Medical term → LOINC codes. Class-level so tests can observe the
-  // mapping and future callers can reuse the same lookup.
-  @visibleForTesting
+  // Medical term → LOINC codes. Shared by lab search and chat retrieval.
   static const Map<String, List<String>> medicalTermLoincCodes = {
     // Total, LDL, HDL, Triglycerides
     'cholesterol': ['2093-3', '2085-9', '2089-1', '2571-8'],

@@ -214,10 +214,13 @@ class GemmaModelService {
   }
 
   /// Generate a completion for [prompt] using the Gemma model.
-  Future<String?> generate(String prompt) async {
+  Future<String?> generate(String prompt, {int? promptCharBudget}) async {
     await ensureInitialized();
     if (!_initialized || _engine == null) return null;
-    prompt = _capPrompt(prompt);
+    prompt = capPromptToBudget(
+      prompt,
+      promptCharBudget ?? promptBudgetForPlatform(),
+    );
     final genParams = _generationParamsForPlatform();
 
     final buffer = StringBuffer();

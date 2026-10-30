@@ -1,0 +1,7 @@
+{
+  "ONEUP_CLIENT_ID": "paste-sandbox-client-id",
+  "ONEUP_CLIENT_SECRET": "paste-sandbox-client-secret",
+  "ONEUP_AUTHORIZE_URL": "https://auth.1uphealthdemo.com/oauth2/authorize/test",
+  "ONEUP_TOKEN_URL": "https://auth.1uphealthdemo.com/oauth2/token",
+  "ONEUP_FHIR_BASE": "https://api.1uphealthdemo.com/r4"
+}

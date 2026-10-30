@@ -757,7 +757,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
             // Suggested questions: only before first user message (LLM-style; scroll off after use)
             if (_messages.length == 1 && _followUpPrompts.isNotEmpty)
-              Container(
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.46,
+                ),
+                child: SingleChildScrollView(
+              child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 color: AppPalette.cream,
                 child: Column(
@@ -819,6 +824,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       );
                     }),
                   ],
+                ),
+              ),
                 ),
               ),
 

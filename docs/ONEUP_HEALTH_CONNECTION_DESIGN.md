@@ -75,7 +75,7 @@ Device vitals stay on Apple Health even after 1up is connected. A plan may also 
 3. The member who connects is the published synthetic member, entered in 1up’s demo auth app (not stored in our repo):
 
    - First name John, last name Allen
-   - Birthdate 10/19/1950
+   - Birthdate 10/19/1940
    - Plan member ID 123456789123
    - Zip 02114
 
